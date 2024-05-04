@@ -1,12 +1,14 @@
 // This file contains the prover, round by round
 
-use std::marker::PhantomData;
+use std::{collections::HashMap, hash::Hash, marker::PhantomData};
 
 use ark_ff::{to_bytes, FftField, PrimeField, UniformRand};
 use ark_poly::{Evaluations, 
     univariate::DensePolynomial, EvaluationDomain, GeneralEvaluationDomain, Radix2EvaluationDomain
 };
 use ark_poly_commit::{PolynomialCommitment};
+
+use std::fmt::Error;
 
 use crate::rng::FiatShamirRng;
 // we need pick parameters
@@ -24,6 +26,10 @@ pub fn poly_from_evals<F: FftField>(evals: &Vec<F>) -> DensePolynomial<F> {
     let eval_form = Evaluations::from_vec_and_domain(evals.to_owned(), domain);
     eval_form.interpolate()
 }
+
+// pub struct Proof<F: PrimeField> {
+
+// }
 
 pub struct Prover<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShamirRng> {
     // f_domain: GeneralEvaluationDomain<F>,
@@ -66,11 +72,58 @@ impl<F: PrimeField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatSha
         // self.t = poly_from_evals(&t_evals);
     }
 
-    pub fn prove() {
+    pub fn prove(self) -> Result<Vec<u8>, Error> {
+        // TODO: fix this initialization to include all public inputs
         let mut fs_rng = FS::initialize(
             &to_bytes![&Self::PROTOCOL_NAME].unwrap(),
         );
+        let f_domain_size = self.f_evals.len();
+        let t_domain_size = self.t_evals.len();
+        assert_eq!(f_domain_size % self.coset_domain_size, 0);
+        assert_eq!(t_domain_size % self.coset_domain_size, 0);
+        let f_domain_num_cosets = f_domain_size / self.coset_domain_size;
+        let t_domain_num_cosets = t_domain_size / self.coset_domain_size;
         // Step 1: compute count polynomial c(X) that encodes the counts the frequency of each table vector in f
+        let f_vecs: Vec<Vec<F>> = (0..f_domain_num_cosets)
+            .map(|coset_idx| {
+                (0..self.coset_domain_size)
+                    .map(|i| self.f_evals[i * self.coset_domain_size + coset_idx])
+                    .collect()
+            })
+            .collect();
+        let t_vecs: Vec<Vec<F>> = (0..t_domain_num_cosets)
+            .map(|coset_idx| {
+                (0..self.coset_domain_size)
+                    .map(|i| self.t_evals[i * self.coset_domain_size + coset_idx])
+                    .collect()
+            })
+            .collect();
+        // count how many each vector appears in t_vecs
+        let mut f_vec_counts: HashMap<Vec<F>, i32> = HashMap::new();
+        for f_vec in &f_vecs {
+            *f_vec_counts.entry(f_vec.clone()).or_insert(0) += 1;
+        }
+        let mut t_vec_counts: HashMap<Vec<F>, i32> = HashMap::new();
+        for t_vec in &t_vecs {
+            *t_vec_counts.entry(t_vec.clone()).or_insert(0) += 1;
+        }
+        // loop through f_vec_counts and check that each vector appears in t_vec_counts
+        for (k, v) in &f_vec_counts {
+            if !t_vec_counts.contains_key(k) {
+                panic!("f contains vec that is not in {:?}", k);
+            }
+        }
+        // Step 1.a: Define c(X) over t_domain
+        let mut c_evals: Vec<i32> = vec![0; t_domain_size];
+        for i  in 0..t_domain_size {
+            c_evals[i] = f_vec_counts[&t_vecs[i%t_domain_num_cosets].clone()];
+        }
+        // Step 1.b: ZeroTest to should that c(\gammaX) = c(X)
+        
+        
+        println!("{:?}", c_evals);
+        
+
 
         // Step 2: Compute challenges alpha and beta
         let alpha: F = u128::rand(&mut fs_rng).into();
@@ -85,5 +138,7 @@ impl<F: PrimeField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatSha
         // Step 6: Compute inverse polynomial U_b(X)
 
         // Step 7: Prove summations of U_0 and c * U_1 
+
+        return Ok(vec![]);
     }
 }
