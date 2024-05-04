@@ -6,3 +6,11 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+ark-ff = "0.3.0"
+ark-poly = "0.3.0"
+ark-ec = "0.3.0"
+ark-std = "0.3.0"
+ark-poly-commit = { version = "^0.3.0", default-features = false }
+ark-bls12-381 = { version = "^0.3.0", default-features = false, features = [ "curve" ] }
+rand_chacha = { version = "0.3.0", default-features = false }
+blake2 = { version = "0.9", default-features = false }
