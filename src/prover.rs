@@ -2,9 +2,9 @@
 
 use std::{collections::HashMap, hash::Hash, marker::PhantomData};
 
-use ark_ff::{to_bytes, FftField, UniformRand};
-use ark_poly::{univariate::SparsePolynomial, univariate::DensePolynomial, EvaluationDomain, Evaluations, GeneralEvaluationDomain, Radix2EvaluationDomain
-};
+use ark_ff::{to_bytes, Field, FftField, UniformRand};
+use ark_poly::{univariate::SparsePolynomial, univariate::DensePolynomial, EvaluationDomain, Evaluations, GeneralEvaluationDomain, Radix2EvaluationDomain};
+use ark_std::ops::*;
 use ark_poly_commit::{LabeledPolynomial, PolynomialCommitment};
 
 use std::fmt::Error;
@@ -109,11 +109,11 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             })
             .collect();
         // count how many each vector appears in t_vecs
-        let mut f_vec_counts: HashMap<Vec<F>, i32> = HashMap::new();
+        let mut f_vec_counts: HashMap<Vec<F>, u32> = HashMap::new();
         for f_vec in &f_vecs {
             *f_vec_counts.entry(f_vec.clone()).or_insert(0) += 1;
         }
-        let mut t_vec_counts: HashMap<Vec<F>, i32> = HashMap::new();
+        let mut t_vec_counts: HashMap<Vec<F>, u32> = HashMap::new();
         for t_vec in &t_vecs {
             *t_vec_counts.entry(t_vec.clone()).or_insert(0) += 1;
         }
@@ -126,7 +126,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         // Step 1.a: Define c(X) over t_domain
         let mut c_evals: Vec<F> = vec![F::zero(); t_domain_size];
         for i  in 0..t_domain_size {
-            // c_evals[i] = f_vec_counts[&t_vecs[i%t_domain_num_cosets].clone()];
+            c_evals[i] = F::from(f_vec_counts[&t_vecs[i%t_domain_num_cosets].clone()]);
         }
         println!("Count poly in eval form: {:?}", c_evals);
 
@@ -138,8 +138,8 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         println!("Rotated c_evals: {:?}", c_evals);
         let c_coeffs_rotated = poly_from_evals(&c_evals);
         // Want to prove that c(X) - c(\gammaX) = 0
-        let c_com = LabeledPolynomial::new("c".to_string(), c_coeffs, None, None);
-        let c_rotated_com = LabeledPolynomial::new("c_rotated".to_string(), c_coeffs_rotated, None, None);
+        let c = LabeledPolynomial::new("c".to_string(), c_coeffs.clone(), None, None);
+        let c_rotated = LabeledPolynomial::new("c_rotated".to_string(), c_coeffs_rotated.clone(), None, None);
         let (c_comms, _) = PC::commit(&self.commitment_key, vec![&c, &c_rotated], None).unwrap();
         // Now that we've committed, do a zero test over t_domain.
         // Get a quotient poly q(X) = (c(X) - c(\gammaX))/t_vanishing over t_domain
