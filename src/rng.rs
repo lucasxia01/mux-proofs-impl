@@ -1,5 +1,5 @@
-// Copied from Sublonk RNG
-use ark_ff::{vec::Vec, FromBytes, ToBytes};
+// Copied from Marlin RNG
+use ark_ff::{FromBytes, ToBytes};
 use ark_std::convert::From;
 use ark_std::marker::PhantomData;
 use ark_std::rand::{RngCore, SeedableRng};
