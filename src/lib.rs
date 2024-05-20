@@ -5,7 +5,7 @@ use std::{collections::HashMap, hash::Hash, marker::PhantomData};
 use ark_ff::{to_bytes, Field, FftField, UniformRand};
 use ark_poly::{univariate::SparsePolynomial, univariate::DensePolynomial, EvaluationDomain, Evaluations, GeneralEvaluationDomain, Radix2EvaluationDomain};
 use ark_std::{end_timer, ops::*, start_timer};
-use ark_poly_commit::{LabeledPolynomial, PolynomialCommitment, PCUniversalParams};
+use ark_poly_commit::{LabeledCommitment, LabeledPolynomial, PCUniversalParams, PolynomialCommitment};
 use ark_std::rand::RngCore;
 
 pub mod rng;
@@ -31,6 +31,18 @@ pub fn poly_from_evals<F: FftField>(evals: &Vec<F>) -> DensePolynomial<F> {
     let domain = Radix2EvaluationDomain::<F>::new(n).unwrap();
     let eval_form = Evaluations::from_vec_and_domain(evals.to_owned(), domain);
     eval_form.interpolate()
+}
+
+// Commits to multiple polynomials represented by vector of evaluations
+pub fn commit_to_evals<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>>(
+    committer_key: &PC::CommitterKey,
+    evals: &Vec<F>,
+    name: &str,
+) -> LabeledCommitment<PC::Commitment> {
+    let poly = poly_from_evals(evals);
+    let labeled_poly = LabeledPolynomial::new(name.to_string(), poly.clone(), None, None);
+    let comms = PC::commit(committer_key, vec![&labeled_poly], None).unwrap();
+    comms.0[0].clone()
 }
 
 // Copied from sublonk
