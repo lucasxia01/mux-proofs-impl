@@ -36,13 +36,17 @@ pub fn poly_from_evals<F: FftField>(evals: &Vec<F>) -> DensePolynomial<F> {
 // Commits to multiple polynomials represented by vector of evaluations
 pub fn commit_to_evals<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>>(
     committer_key: &PC::CommitterKey,
-    evals: &Vec<F>,
-    name: &str,
-) -> LabeledCommitment<PC::Commitment> {
-    let poly = poly_from_evals(evals);
-    let labeled_poly = LabeledPolynomial::new(name.to_string(), poly.clone(), None, None);
-    let comms = PC::commit(committer_key, vec![&labeled_poly], None).unwrap();
-    comms.0[0].clone()
+    evals: Vec<Vec<F>>,
+    names: Vec<&str>
+) -> Vec<LabeledCommitment<PC::Commitment>> {
+    // call poly_from_evals on each of the list of evals
+    let polys = evals.iter().map(|x| poly_from_evals(x)).collect::<Vec<_>>();
+    // create the labeled polynomials with the corresponding names
+    let labeled_polys = polys.iter().enumerate().map(|(i, x)| LabeledPolynomial::new(names[i].to_string(), x.clone(), None, None)).collect::<Vec<_>>();
+
+    // let labeled_poly = LabeledPolynomial::new(name.to_string(), poly.clone(), None, None);
+    let comms = PC::commit(committer_key, &labeled_polys, None).unwrap();
+    comms.0 // TODO: figure out what the second tuple element, the randomness is
 }
 
 // Copied from sublonk
@@ -116,8 +120,8 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
     // Prove function
     // Inputs: Prover key, (vector commitment, table commitment), (vector elements, table elements)
     pub fn prove(committer_key: &PC::CommitterKey, 
-                f_comm: PC::Commitment, 
-                t_comm: PC::Commitment, 
+                f_comm: LabeledCommitment<PC::Commitment>, 
+                t_comm: LabeledCommitment<PC::Commitment>, 
                 f_evals: Vec<F>, 
                 t_evals: Vec<F>, 
                 coset_domain_size: usize) 
