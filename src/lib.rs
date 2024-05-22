@@ -8,8 +8,8 @@ use ark_poly::{
     EvaluationDomain, Evaluations, GeneralEvaluationDomain, Polynomial, Radix2EvaluationDomain,
 };
 use ark_poly_commit::{
-    LabeledCommitment, LabeledPolynomial, LinearCombination, PCUniversalParams,
-    PolynomialCommitment,
+    BatchLCProof, LabeledCommitment, LabeledPolynomial, LinearCombination, PCUniversalParams,
+    PolynomialCommitment, QuerySet,
 };
 use ark_std::rand::RngCore;
 use ark_std::{end_timer, ops::*, start_timer};
@@ -87,7 +87,7 @@ pub fn construct_zero_tests<F: FftField>(
             (F::one(), "c".to_string()),
             (
                 t_vanishing.evaluate(&opening_challenge),
-                "t_vanishing".to_string(),
+                "c_quotient".to_string(),
             ),
         ],
     );
@@ -102,8 +102,8 @@ pub fn get_mult_subgroup_vanishing_poly<F: FftField>(n: usize) -> SparsePolynomi
 
 pub type UniversalSRS<F, PC> = <PC as PolynomialCommitment<F, DensePolynomial<F>>>::UniversalParams;
 
-pub struct Proof<F: FftField> {
-    dummy: F,
+pub struct Proof<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>> {
+    pc_proof: BatchLCProof<F, DensePolynomial<F>, PC>,
 }
 
 pub struct VectorLookup<
@@ -171,7 +171,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         f_evals: Vec<F>,
         t_evals: Vec<F>,
         coset_domain_size: usize,
-    ) -> Result<Proof<F>, Error<PC::Error>> {
+    ) -> Result<Proof<F, PC>, Error<PC::Error>> {
         // TODO: fix this initialization to include all public inputs
         let mut fs_rng = FS::initialize(&to_bytes![&Self::PROTOCOL_NAME].unwrap());
         let f_domain_size = f_evals.len();
@@ -185,6 +185,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             get_mult_subgroup_vanishing_poly(t_domain_size).into();
         let f_vanishing: DensePolynomial<F> =
             get_mult_subgroup_vanishing_poly(f_domain_size).into();
+
         // Step 1: compute count polynomial c(X) that encodes the counts the frequency of each table vector in f
         let f_vecs: Vec<Vec<F>> = (0..f_domain_num_cosets)
             .map(|coset_idx| {
@@ -200,7 +201,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
                     .collect()
             })
             .collect();
-        // count how many each vector appears in t_vecs
+        // Count how many each vector appears in t_vecs.
         let mut f_vec_counts: HashMap<Vec<F>, u32> = HashMap::new();
         for f_vec in &f_vecs {
             *f_vec_counts.entry(f_vec.clone()).or_insert(0) += 1;
@@ -209,7 +210,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         for t_vec in &t_vecs {
             *t_vec_counts.entry(t_vec.clone()).or_insert(0) += 1;
         }
-        // loop through f_vec_counts and check that each vector appears in t_vec_counts
+        // Loop through f_vec_counts and check that each vector appears in t_vec_counts.
         for (k, v) in &f_vec_counts {
             if !t_vec_counts.contains_key(k) {
                 panic!("f contains vec that is not in {:?}", k);
@@ -223,25 +224,37 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         println!("Count poly in eval form: {:?}", c_evals);
 
         // Step 1.b: ZeroTest to should that c(\gammaX) = c(X)
-        // commit to c(X) and c(\gammaX)
+        // Commit to c(X) and c(\gammaX) and the quotient polynomial c_quotient(X) = (c(X) - c(\gammaX))/t_vanishing(X)
         let c_coeffs = poly_from_evals(&c_evals);
         // rotate c_evals by 1
         c_evals.rotate_right(1);
         println!("Rotated c_evals: {:?}", c_evals);
         let c_coeffs_rotated = poly_from_evals(&c_evals);
         // Want to prove that c(X) - c(\gammaX) = 0
-        let c = LabeledPolynomial::new("c".to_string(), c_coeffs.clone(), None, None);
-        let c_rotated = LabeledPolynomial::new(
+        let c_labeled = LabeledPolynomial::new("c".to_string(), c_coeffs.clone(), None, None);
+        let c_rotated_labeled = LabeledPolynomial::new(
             "c_rotated".to_string(),
             c_coeffs_rotated.clone(),
             None,
             None,
         );
-        let (c_comms, _) = PC::commit(committer_key, vec![&c, &c_rotated], None).unwrap();
-        // Now that we've committed, do a zero test over t_domain.
         // Get a quotient poly q(X) = (c(X) - c(\gammaX))/t_vanishing
         let c_quotient = (c_coeffs.sub(&c_coeffs_rotated)).div(&t_vanishing);
+        let c_quotient_labeled =
+            LabeledPolynomial::new("c_quotient".to_string(), c_quotient, None, None);
 
+        let (c_comms, c_comm_rands) = PC::commit(
+            committer_key,
+            vec![&c_labeled, &c_rotated_labeled, &c_quotient_labeled],
+            None,
+        )
+        .map_err(Error::from_pc_err)?;
+        let c_comm = c_comms[0].clone();
+        let c_comm_rand = c_comm_rands[0].clone();
+        let c_rotated_comm = c_comms[1].clone();
+        let c_rotated_comm_rand = c_comm_rands[1].clone();
+        let c_quotient_comm = c_comms[2].clone();
+        let c_quotient_comm_rand = c_comm_rands[2].clone();
         // Step 2: Compute challenges alpha and beta
         let alpha = F::rand(&mut fs_rng);
         let beta = F::rand(&mut fs_rng);
@@ -282,8 +295,19 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         // Construct all the zero tests
         let opening_challenge = F::rand(&mut fs_rng); // TODO: do this or u128::rand?
         let lc_s = construct_zero_tests(opening_challenge, t_vanishing, f_vanishing);
+        let query_set = QuerySet::new();
+        let pc_proof = PC::open_combinations(
+            &committer_key,
+            &lc_s,
+            vec![&c_labeled, &c_rotated_labeled, &c_quotient_labeled],
+            vec![&c_comm, &c_rotated_comm, &c_quotient_comm],
+            &query_set,
+            opening_challenge,
+            vec![&c_comm_rand, &c_rotated_comm_rand, &c_quotient_comm_rand],
+            None, // TODO: replace this with zk_rng
+        )
+        .map_err(Error::from_pc_err)?;
 
-        let dummy: F = F::rand(&mut fs_rng);
-        return Ok(Proof { dummy });
+        return Ok(Proof { pc_proof: pc_proof });
     }
 }
