@@ -40,13 +40,14 @@ mod tests {
         let universal_srs = VectorLookupInst::universal_setup(16, rng).unwrap();
 
         // Index to generate the prover and verifier keys
-        let (committer_key, verifier_key ) = VectorLookupInst::index(&universal_srs, 16).unwrap();
+        let (committer_key, verifier_key) = VectorLookupInst::index(&universal_srs, 16).unwrap();
 
         // Get the public statement: the commitments to f and t
-        let f_comm = commit_to_evals::<Fr, PC>(&committer_key, vec![f_evals.clone()], vec!["f"])[0].clone();
-        let t_comm = commit_to_evals::<Fr, PC>(&committer_key, vec![t_evals.clone()], vec!["t"])[0].clone();
+        let f_comm = commit_to_evals::<Fr, PC>(&committer_key, f_evals.clone(), "f").clone();
+        let t_comm = commit_to_evals::<Fr, PC>(&committer_key, t_evals.clone(), "t").clone();
 
         // Prove
-        let proof = VectorLookupInst::prove(&committer_key, f_comm, t_comm, f_evals, t_evals, 1).unwrap();
+        let proof =
+            VectorLookupInst::prove(&committer_key, f_comm, t_comm, f_evals, t_evals, 1).unwrap();
     }
 }
