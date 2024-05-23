@@ -47,12 +47,13 @@ pub fn get_mult_subgroup_vanishing_poly<F: FftField>(n: usize) -> SparsePolynomi
 
 pub fn compute_ith_lagrange_poly_eval<F: FftField>(
     i: usize,
-    generator: F,
+    domain: Radix2EvaluationDomain<F>,
     evaluation_point: F,
-    vanishing_poly: &SparsePolynomial<F>,
 ) -> F {
-    return vanishing_poly.evaluate(&evaluation_point)
-        / (evaluation_point - generator.pow(&[i as u64]));
+    let omega_to_i = domain.group_gen.pow(&[i as u64]);
+    return omega_to_i / F::from(domain.size)
+        * domain.vanishing_polynomial().evaluate(&evaluation_point)
+        / (evaluation_point - omega_to_i);
 }
 
 // Commits to single polynomial represented by vector of evaluations
@@ -206,6 +207,12 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         let mut fs_rng = FS::initialize(&to_bytes![&Self::PROTOCOL_NAME].unwrap());
         let f_domain_size = f_evals.len();
         let t_domain_size = t_evals.len();
+        let f_domain = Radix2EvaluationDomain::<F>::new(f_domain_size).unwrap();
+        let t_domain = Radix2EvaluationDomain::<F>::new(t_domain_size).unwrap();
+        let coset_domain = Radix2EvaluationDomain::<F>::new(coset_domain_size).unwrap();
+        let f_generator = f_domain.group_gen;
+        let t_generator = t_domain.group_gen;
+        let coset_generator = coset_domain.group_gen;
         assert_eq!(f_domain_size % coset_domain_size, 0);
         assert_eq!(t_domain_size % coset_domain_size, 0);
         let f_domain_num_cosets = f_domain_size / coset_domain_size;
@@ -270,7 +277,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         );
         // Get a quotient poly q(X) = (c(X) - c(\gammaX))/t_vanishing
         let c_quotient = (c_coeffs.sub(&c_coeffs_rotated))
-            .divide_by_vanishing_poly(Radix2EvaluationDomain::<F>::new(t_domain_size).unwrap())
+            .divide_by_vanishing_poly(t_domain)
             .unwrap()
             .0; // TODO: add an error for this
         let c_quotient_labeled =
@@ -311,10 +318,10 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             .map(|(t, b)| *t * *b)
             .take(t_domain_size)
             .collect();
-        let idx_f_coeffs = poly_from_evals(&idx_f);
-        let idx_t_coeffs = poly_from_evals(&idx_t);
-        let idx_f = LabeledPolynomial::new("idx_f".to_string(), idx_f_coeffs, None, None);
-        let idx_t = LabeledPolynomial::new("idx_t".to_string(), idx_t_coeffs, None, None);
+        let idx_f =
+            LabeledPolynomial::new("idx_f".to_string(), poly_from_evals(&idx_f), None, None);
+        let idx_t =
+            LabeledPolynomial::new("idx_t".to_string(), poly_from_evals(&idx_t), None, None);
         let (idx_comms, _) = PC::commit(committer_key, vec![&idx_f, &idx_t], None).unwrap();
 
         // Step 4: Compute summation polynomial S_b(X).
