@@ -39,6 +39,22 @@ pub fn poly_from_evals<F: FftField>(evals: &Vec<F>) -> DensePolynomial<F> {
     eval_form.interpolate()
 }
 
+// Copied from sublonk
+pub fn get_mult_subgroup_vanishing_poly<F: FftField>(n: usize) -> SparsePolynomial<F> {
+    let domain = Radix2EvaluationDomain::<F>::new(n).unwrap();
+    domain.vanishing_polynomial()
+}
+
+pub fn compute_ith_lagrange_poly_eval<F: FftField>(
+    i: usize,
+    generator: F,
+    evaluation_point: F,
+    vanishing_poly: &SparsePolynomial<F>,
+) -> F {
+    return vanishing_poly.evaluate(&evaluation_point)
+        / (evaluation_point - generator.pow(&[i as u64]));
+}
+
 // Commits to single polynomial represented by vector of evaluations
 pub fn commit_to_evals<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>>(
     committer_key: &PC::CommitterKey,
@@ -77,9 +93,10 @@ pub fn multi_commit_to_evals<F: FftField, PC: PolynomialCommitment<F, DensePolyn
 
 pub fn construct_zero_tests<F: FftField>(
     opening_challenge: F,
-    t_vanishing: DensePolynomial<F>,
-    f_vanishing: DensePolynomial<F>,
+    t_vanishing: SparsePolynomial<F>,
+    f_vanishing: SparsePolynomial<F>,
 ) -> Vec<LinearCombination<F>> {
+    // Step 1.b Zero test
     let zero_test_c = LinearCombination::new(
         "zero_test_c".to_string(),
         vec![
@@ -91,13 +108,26 @@ pub fn construct_zero_tests<F: FftField>(
             ),
         ],
     );
-    return vec![zero_test_c];
-}
 
-// Copied from sublonk
-pub fn get_mult_subgroup_vanishing_poly<F: FftField>(n: usize) -> SparsePolynomial<F> {
-    let domain = Radix2EvaluationDomain::<F>::new(n).unwrap();
-    domain.vanishing_polynomial()
+    // Step 3.b Zero tests
+
+    // Step 3.c Zero tests
+
+    // Step 3.d Zero tests
+
+    // Step 4.b Zero tests
+
+    // Step 5.b Zero tests
+
+    // Step 6.b Zero tests
+
+    // Step 7.b Zero tests
+
+    // Step 7.c Zero tests
+
+    // Step 7.d Zero test
+
+    return vec![zero_test_c];
 }
 
 pub type UniversalSRS<F, PC> = <PC as PolynomialCommitment<F, DensePolynomial<F>>>::UniversalParams;
@@ -181,9 +211,9 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         let f_domain_num_cosets = f_domain_size / coset_domain_size;
         let t_domain_num_cosets = t_domain_size / coset_domain_size;
         // Set up the vanishing polynomials for the two domains
-        let t_vanishing: DensePolynomial<F> =
+        let t_vanishing: SparsePolynomial<F> =
             get_mult_subgroup_vanishing_poly(t_domain_size).into();
-        let f_vanishing: DensePolynomial<F> =
+        let f_vanishing: SparsePolynomial<F> =
             get_mult_subgroup_vanishing_poly(f_domain_size).into();
 
         // Step 1: compute count polynomial c(X) that encodes the counts the frequency of each table vector in f
@@ -239,7 +269,10 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             None,
         );
         // Get a quotient poly q(X) = (c(X) - c(\gammaX))/t_vanishing
-        let c_quotient = (c_coeffs.sub(&c_coeffs_rotated)).div(&t_vanishing);
+        let c_quotient = (c_coeffs.sub(&c_coeffs_rotated))
+            .divide_by_vanishing_poly(Radix2EvaluationDomain::<F>::new(t_domain_size).unwrap())
+            .unwrap()
+            .0; // TODO: add an error for this
         let c_quotient_labeled =
             LabeledPolynomial::new("c_quotient".to_string(), c_quotient, None, None);
 
@@ -265,7 +298,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         for i in 1..coset_domain_size {
             beta_powers.push(beta * beta_powers[i - 1]);
         }
-        // Step 3.a: Compute I_b(X) for b = {f, t}
+        // Step 3.a: Compute I_b(X) for b = {f, t}.
         let idx_f: Vec<_> = f_evals
             .iter()
             .zip(beta_powers.iter().cycle())
@@ -284,7 +317,29 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         let idx_t = LabeledPolynomial::new("idx_t".to_string(), idx_t_coeffs, None, None);
         let (idx_comms, _) = PC::commit(committer_key, vec![&idx_f, &idx_t], None).unwrap();
 
-        // Step 4: Compute summation polynomial S_b(X)
+        // Step 4: Compute summation polynomial S_b(X).
+        // Step 4.a: Compute S_b(X) for b = {f, t}.
+        let mut s_f_coeffs = vec![F::zero(); f_domain_size];
+        let mut s_t_coeffs = vec![F::zero(); f_domain_size];
+        for i in 0..f_domain_num_cosets {
+            let mut s_f_sum = F::zero();
+            for j in 0..coset_domain_size {
+                s_f_sum += f_evals[j * f_domain_num_cosets + i] * beta_powers[j];
+            }
+            let mut s_t_sum = F::zero();
+            for j in 0..coset_domain_size {
+                s_t_sum += f_evals[j * t_domain_num_cosets + i] * beta_powers[j];
+            }
+            for j in 0..coset_domain_size {
+                s_f_coeffs[j * f_domain_num_cosets + i] = s_f_sum;
+                s_t_coeffs[j * t_domain_num_cosets + i] = s_t_sum;
+            }
+        }
+        let s_f =
+            LabeledPolynomial::new("s_f".to_string(), poly_from_evals(&s_f_coeffs), None, None);
+        let s_t =
+            LabeledPolynomial::new("s_t".to_string(), poly_from_evals(&s_t_coeffs), None, None);
+        let (s_comms, s_comm_rands) = PC::commit(committer_key, vec![&s_f, &s_t], None).unwrap();
 
         // Step 5: Compute induction polynomial B_b(X), which contains partial sums
 
