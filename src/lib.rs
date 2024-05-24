@@ -215,8 +215,8 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
     // Inputs: Prover key, (vector commitment, table commitment), (vector elements, table elements)
     pub fn prove(
         committer_key: &PC::CommitterKey,
-        f_comm: LabeledCommitment<PC::Commitment>,
-        t_comm: LabeledCommitment<PC::Commitment>,
+        f_comm: &LabeledCommitment<PC::Commitment>,
+        t_comm: &LabeledCommitment<PC::Commitment>,
         f_evals: Vec<F>,
         t_evals: Vec<F>,
         f: LabeledPolynomial<F, DensePolynomial<F>>,
@@ -699,9 +699,9 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         let T_f =
             LabeledPolynomial::new("T_f".to_string(), poly_from_evals(&T_f_evals), None, None);
         let mut T_t_evals = vec![F::zero(); t_domain_size];
-        T_t_evals[t_domain_size - 1] = u_t_evals[t_domain_size - 1];
+        T_t_evals[t_domain_size - 1] = c_evals[t_domain_size - 1] * u_t_evals[t_domain_size - 1];
         for i in (0..t_domain_size - 1).rev() {
-            T_t_evals[i] = T_t_evals[i + 1] + u_t_evals[i];
+            T_t_evals[i] = T_t_evals[i + 1] + c_evals[i] * u_t_evals[i];
         }
         let T_t =
             LabeledPolynomial::new("T_t".to_string(), poly_from_evals(&T_t_evals), None, None);
@@ -746,9 +746,12 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
     pub fn verify(
         verifier_key: &PC::VerifierKey,
         proof: &Proof<F, PC>,
-        f_comm: LabeledCommitment<PC::Commitment>,
-        t_comm: LabeledCommitment<PC::Commitment>,
+        f_comm: &LabeledCommitment<PC::Commitment>,
+        t_comm: &LabeledCommitment<PC::Commitment>,
     ) -> Result<bool, Error<PC::Error>> {
+        // Derive some lagranges and vanishing polynomials
+        // Do a bunch of zero checks
+        // Batch verify everything with 2 pairings
         return Ok(true);
     }
 }
