@@ -45,8 +45,8 @@ mod tests {
         let f = LabeledPolynomial::new("f".to_string(), poly_from_evals(&f_evals), None, None);
         let t = LabeledPolynomial::new("t".to_string(), poly_from_evals(&t_evals), None, None);
         // Get the public statement: the commitments to f and t
-        let f_comm = commit_to_evals::<Fr, PC>(&committer_key, f_evals.clone(), "f").clone();
-        let t_comm = commit_to_evals::<Fr, PC>(&committer_key, t_evals.clone(), "t").clone();
+        let f_comm = PC::commit(&committer_key, vec![&f], None).unwrap().0[0].clone();
+        let t_comm = PC::commit(&committer_key, vec![&t], None).unwrap().0[0].clone();
 
         // Prove
         let proof =

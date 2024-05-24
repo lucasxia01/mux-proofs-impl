@@ -114,14 +114,7 @@ pub fn construct_zero_tests<F: FftField>(
     // Step 1.b Zero test
     let zero_test_c = LinearCombination::new(
         "zero_test_c".to_string(),
-        vec![
-            (F::one(), "c_rotated_gamma".to_string()),
-            (F::one(), "c".to_string()),
-            (
-                t_vanishing.evaluate(&opening_challenge),
-                "c_quotient".to_string(),
-            ),
-        ],
+        vec![(F::one(), "c".to_string()), (-F::one(), "c".to_string())],
     );
 
     // Step 3.b Zero tests
@@ -299,11 +292,9 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         let c_quotient = LabeledPolynomial::new("c_quotient".to_string(), c_quotient, None, None);
 
         let (c_comms, c_comm_rands) =
-            PC::commit(committer_key, vec![&c, &c_quotient], None).map_err(Error::from_pc_err)?;
+            PC::commit(committer_key, vec![&c], None).map_err(Error::from_pc_err)?;
         let c_comm = c_comms[0].clone();
         let c_comm_rand = c_comm_rands[0].clone();
-        let c_quotient_comm = c_comms[2].clone();
-        let c_quotient_comm_rand = c_comm_rands[2].clone();
 
         // Step 2: Compute challenges alpha and beta
         let alpha = F::rand(&mut fs_rng);
@@ -643,8 +634,47 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             LabeledPolynomial::new("b_t_quotient".to_string(), b_t_quotient_dense, None, None);
 
         // Step 6: Compute inverse polynomial U_b(X)
+        // Step 6.a: Compute U_b(X) for b = {f, t}.
+        let mut u_f_evals = vec![F::zero(); f_domain_size];
+        for i in 0..f_domain_num_cosets {
+            let u_f_val = (alpha - s_f_evals[i]).inverse().unwrap();
+            // Set u_f_evals, TODO: do this more idiomatically?
+            for j in 0..coset_domain_size {
+                u_f_evals[j * f_domain_num_cosets + i] = u_f_val;
+            }
+        }
+        let u_f =
+            LabeledPolynomial::new("u_f".to_string(), poly_from_evals(&u_f_evals), None, None);
 
+        let mut u_t_evals = vec![F::zero(); t_domain_size];
+        for i in 0..t_domain_num_cosets {
+            let u_t_val = (alpha - s_t_evals[i]).inverse().unwrap();
+            // Set u_t_evals, TODO: do this more idiomatically?
+            for j in 0..coset_domain_size {
+                u_t_evals[j * t_domain_num_cosets + i] = u_t_val;
+            }
+        }
+        let u_t =
+            LabeledPolynomial::new("u_t".to_string(), poly_from_evals(&u_t_evals), None, None);
+
+        let (u_comms, u_comm_rands) = PC::commit(committer_key, vec![&u_f, &u_t], None).unwrap();
         // Step 7: Prove summations of U_0 and c * U_1
+        // Step 7.a: Compute inverse summation polynomials T_b(X) for b = {f, t}.
+        let mut T_f_evals = vec![F::zero(); f_domain_size];
+        T_f_evals[f_domain_size - 1] = u_f_evals[f_domain_size - 1];
+        for i in (0..f_domain_size - 1).rev() {
+            T_f_evals[i] = T_f_evals[i + 1] + u_f_evals[i];
+        }
+        let T_f =
+            LabeledPolynomial::new("T_f".to_string(), poly_from_evals(&T_f_evals), None, None);
+        let mut T_t_evals = vec![F::zero(); t_domain_size];
+        T_t_evals[t_domain_size - 1] = u_t_evals[t_domain_size - 1];
+        for i in (0..t_domain_size - 1).rev() {
+            T_t_evals[i] = T_t_evals[i + 1] + u_t_evals[i];
+        }
+        let T_t =
+            LabeledPolynomial::new("T_t".to_string(), poly_from_evals(&T_t_evals), None, None);
+        let (T_comms, T_comm_rands) = PC::commit(committer_key, vec![&T_f, &T_t], None).unwrap();
 
         // Construct all the zero tests
         let opening_challenge = F::rand(&mut fs_rng); // TODO: do this or u128::rand?
@@ -654,10 +684,10 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             &committer_key,
             &lc_s,
             vec![&c, &c_quotient],
-            vec![&c_comm, &c_quotient_comm],
+            vec![&c_comm],
             &query_set,
             opening_challenge,
-            vec![&c_comm_rand, &c_quotient_comm_rand],
+            vec![&c_comm_rand],
             None, // TODO: replace this with zk_rng
         )
         .map_err(Error::from_pc_err)?;
