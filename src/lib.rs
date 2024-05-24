@@ -141,6 +141,17 @@ pub fn construct_zero_tests<F: FftField>(
 pub type UniversalSRS<F, PC> = <PC as PolynomialCommitment<F, DensePolynomial<F>>>::UniversalParams;
 
 pub struct Proof<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>> {
+    c_comm: LabeledCommitment<PC::Commitment>,
+    idx_f_comm: LabeledCommitment<PC::Commitment>,
+    idx_t_comm: LabeledCommitment<PC::Commitment>,
+    s_f_comm: LabeledCommitment<PC::Commitment>,
+    s_t_comm: LabeledCommitment<PC::Commitment>,
+    b_f_comm: LabeledCommitment<PC::Commitment>,
+    b_t_comm: LabeledCommitment<PC::Commitment>,
+    u_f_comm: LabeledCommitment<PC::Commitment>,
+    u_t_comm: LabeledCommitment<PC::Commitment>,
+    T_f_comm: LabeledCommitment<PC::Commitment>,
+    T_t_comm: LabeledCommitment<PC::Commitment>,
     pc_proof: BatchLCProof<F, DensePolynomial<F>, PC>,
 }
 
@@ -486,7 +497,12 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         );
 
         // Commit to the f and t indexing polynomials and the quotient polynomials
-        let (idx_comms, _) = PC::commit(committer_key, vec![&idx_f, &idx_t], None).unwrap();
+        let (idx_comms, idx_comm_rands) =
+            PC::commit(committer_key, vec![&idx_f, &idx_t], None).unwrap();
+        let idx_f_comm = idx_comms[0].clone();
+        let idx_f_comm_rand = idx_comm_rands[0].clone();
+        let idx_t_comm = idx_comms[1].clone();
+        let idx_t_comm_rand = idx_comm_rands[1].clone();
 
         // Step 4: Compute summation polynomial S_b(X).
         // Step 4.a: Compute S_b(X) for b = {f, t}.
@@ -545,6 +561,10 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             LabeledPolynomial::new("s_t_quotient".to_string(), s_t_quotient_dense, None, None);
 
         let (s_comms, s_comm_rands) = PC::commit(committer_key, vec![&s_f, &s_t], None).unwrap();
+        let s_f_comm = s_comms[0].clone();
+        let s_f_comm_rand = s_comm_rands[0].clone();
+        let s_t_comm = s_comms[1].clone();
+        let s_t_comm_rand = s_comm_rands[1].clone();
 
         // Step 5: Compute induction polynomial B_b(X), which contains partial sums
         // Step 5.a: Compute B_b(X) for b = {f, t}.
@@ -633,6 +653,12 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         let b_t_quotient =
             LabeledPolynomial::new("b_t_quotient".to_string(), b_t_quotient_dense, None, None);
 
+        let (b_comms, b_comm_rands) = PC::commit(committer_key, vec![&b_f, &b_t], None).unwrap();
+        let b_f_comm = b_comms[0].clone();
+        let b_f_comm_rand = b_comm_rands[0].clone();
+        let b_t_comm = b_comms[1].clone();
+        let b_t_comm_rand = b_comm_rands[1].clone();
+
         // Step 6: Compute inverse polynomial U_b(X)
         // Step 6.a: Compute U_b(X) for b = {f, t}.
         let mut u_f_evals = vec![F::zero(); f_domain_size];
@@ -658,6 +684,11 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             LabeledPolynomial::new("u_t".to_string(), poly_from_evals(&u_t_evals), None, None);
 
         let (u_comms, u_comm_rands) = PC::commit(committer_key, vec![&u_f, &u_t], None).unwrap();
+        let u_f_comm = u_comms[0].clone();
+        let u_f_comm_rand = u_comm_rands[0].clone();
+        let u_t_comm = u_comms[1].clone();
+        let u_t_comm_rand = u_comm_rands[1].clone();
+
         // Step 7: Prove summations of U_0 and c * U_1
         // Step 7.a: Compute inverse summation polynomials T_b(X) for b = {f, t}.
         let mut T_f_evals = vec![F::zero(); f_domain_size];
@@ -675,6 +706,10 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         let T_t =
             LabeledPolynomial::new("T_t".to_string(), poly_from_evals(&T_t_evals), None, None);
         let (T_comms, T_comm_rands) = PC::commit(committer_key, vec![&T_f, &T_t], None).unwrap();
+        let T_f_comm = T_comms[0].clone();
+        let T_f_comm_rand = T_comm_rands[0].clone();
+        let T_t_comm = T_comms[1].clone();
+        let T_t_comm_rand = T_comm_rands[1].clone();
 
         // Construct all the zero tests
         let opening_challenge = F::rand(&mut fs_rng); // TODO: do this or u128::rand?
@@ -692,6 +727,28 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         )
         .map_err(Error::from_pc_err)?;
 
-        return Ok(Proof { pc_proof: pc_proof });
+        return Ok(Proof {
+            c_comm,
+            idx_f_comm,
+            idx_t_comm,
+            s_f_comm,
+            s_t_comm,
+            b_f_comm,
+            b_t_comm,
+            u_f_comm,
+            u_t_comm,
+            T_f_comm,
+            T_t_comm,
+            pc_proof,
+        });
+    }
+
+    pub fn verify(
+        verifier_key: &PC::VerifierKey,
+        proof: &Proof<F, PC>,
+        f_comm: LabeledCommitment<PC::Commitment>,
+        t_comm: LabeledCommitment<PC::Commitment>,
+    ) -> Result<bool, Error<PC::Error>> {
+        return Ok(true);
     }
 }
