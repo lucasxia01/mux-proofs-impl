@@ -50,7 +50,10 @@ mod tests {
 
         // Prove
         let proof =
-            VectorLookupInst::prove(&committer_key, f_comm, t_comm, f_evals, t_evals, f, t, 1)
+            VectorLookupInst::prove(&committer_key, &f_comm, &t_comm, f_evals, t_evals, f, t, 1)
                 .unwrap();
+        let result = VectorLookupInst::verify(&verifier_key, &proof, &f_comm, &t_comm).unwrap();
+
+        assert!(result);
     }
 }

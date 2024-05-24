@@ -2,14 +2,14 @@
 
 use std::{collections::HashMap, hash::Hash, marker::PhantomData};
 
-use ark_ff::{to_bytes, FftField, Field, UniformRand};
+use ark_ff::{to_bytes, FftField, Field};
 use ark_poly::{
     univariate::{DensePolynomial, SparsePolynomial},
     EvaluationDomain, Evaluations, GeneralEvaluationDomain, Polynomial, Radix2EvaluationDomain,
     UVPolynomial,
 };
 use ark_poly_commit::{
-    BatchLCProof, LabeledCommitment, LabeledPolynomial, LinearCombination, PCUniversalParams,
+    LabeledCommitment, LabeledPolynomial, LinearCombination, PCUniversalParams,
     PolynomialCommitment, QuerySet,
 };
 use ark_std::rand::RngCore;
@@ -152,7 +152,7 @@ pub struct Proof<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>> {
     u_t_comm: LabeledCommitment<PC::Commitment>,
     T_f_comm: LabeledCommitment<PC::Commitment>,
     T_t_comm: LabeledCommitment<PC::Commitment>,
-    pc_proof: BatchLCProof<F, DensePolynomial<F>, PC>,
+    pc_proof: <PC as PolynomialCommitment<F, DensePolynomial<F>>>::BatchProof,
 }
 
 pub struct VectorLookup<
@@ -713,17 +713,55 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
 
         // Construct all the zero tests
         let opening_challenge = F::rand(&mut fs_rng); // TODO: do this or u128::rand?
-        let lc_s = construct_zero_tests(opening_challenge, t_vanishing, f_vanishing);
         let query_set = QuerySet::new();
-        let pc_proof = PC::open_combinations(
-            &committer_key,
-            &lc_s,
-            vec![&c, &c_quotient],
-            vec![&c_comm],
+        // let pc_proof = PC::open_combinations(
+        //     &committer_key,
+        //     &lc_s,
+        //     vec![&c, &c_quotient],
+        //     vec![&c_comm],
+        //     &query_set,
+        //     opening_challenge,
+        //     vec![&c_comm_rand],
+        //     None, // TODO: replace this with zk_rng
+        // )
+        // .map_err(Error::from_pc_err)?;
+        let comms = vec![
+            &c_comm,
+            &idx_f_comm,
+            &idx_t_comm,
+            &s_f_comm,
+            &s_t_comm,
+            &b_f_comm,
+            &b_t_comm,
+            &u_f_comm,
+            &u_t_comm,
+            &T_f_comm,
+            &T_t_comm,
+        ];
+        let comm_rands = vec![
+            &c_comm_rand,
+            &idx_f_comm_rand,
+            &idx_t_comm_rand,
+            &s_f_comm_rand,
+            &s_t_comm_rand,
+            &b_f_comm_rand,
+            &b_t_comm_rand,
+            &u_f_comm_rand,
+            &u_t_comm_rand,
+            &T_f_comm_rand,
+            &T_t_comm_rand,
+        ];
+        let polys = [
+            &c, &idx_f, &idx_t, &s_f, &s_t, &b_f, &b_t, &u_f, &u_t, &T_f, &T_t,
+        ];
+        let pc_proof = PC::batch_open(
+            committer_key,
+            polys,
+            comms,
             &query_set,
             opening_challenge,
-            vec![&c_comm_rand],
-            None, // TODO: replace this with zk_rng
+            comm_rands,
+            None,
         )
         .map_err(Error::from_pc_err)?;
 
@@ -752,6 +790,15 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         // Derive some lagranges and vanishing polynomials
         // Do a bunch of zero checks
         // Batch verify everything with 2 pairings
+        // PC::batch_check(
+        //     vk,
+        //     commitments,
+        //     query_set,
+        //     evaluations,
+        //     proof,
+        //     opening_challenge,
+        //     rng,
+        // );
         return Ok(true);
     }
 }
