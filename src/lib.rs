@@ -215,6 +215,8 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         t_comm: LabeledCommitment<PC::Commitment>,
         f_evals: Vec<F>,
         t_evals: Vec<F>,
+        f: LabeledPolynomial<F, DensePolynomial<F>>,
+        t: LabeledPolynomial<F, DensePolynomial<F>>,
         coset_domain_size: usize,
     ) -> Result<Proof<F, PC>, Error<PC::Error>> {
         // TODO: fix this initialization to include all public inputs
@@ -297,12 +299,9 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         let c_quotient = LabeledPolynomial::new("c_quotient".to_string(), c_quotient, None, None);
 
         let (c_comms, c_comm_rands) =
-            PC::commit(committer_key, vec![&c, &c_rotated_gamma, &c_quotient], None)
-                .map_err(Error::from_pc_err)?;
+            PC::commit(committer_key, vec![&c, &c_quotient], None).map_err(Error::from_pc_err)?;
         let c_comm = c_comms[0].clone();
         let c_comm_rand = c_comm_rands[0].clone();
-        let c_rotated_comm = c_comms[1].clone();
-        let c_rotated_comm_rand = c_comm_rands[1].clone();
         let c_quotient_comm = c_comms[2].clone();
         let c_quotient_comm_rand = c_comm_rands[2].clone();
 
@@ -496,25 +495,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         );
 
         // Commit to the f and t indexing polynomials and the quotient polynomials
-        let (idx_comms, _) = PC::commit(
-            committer_key,
-            vec![
-                &idx_f,
-                &idx_f_rotated_omega,
-                &idx_f_rotated_gamma,
-                &idx_f_quotient_1,
-                &idx_f_quotient_2,
-                &idx_f_quotient_3,
-                &idx_t,
-                &idx_t_rotated_omega,
-                &idx_t_rotated_gamma,
-                &idx_t_quotient_1,
-                &idx_t_quotient_2,
-                &idx_t_quotient_3,
-            ],
-            None,
-        )
-        .unwrap();
+        let (idx_comms, _) = PC::commit(committer_key, vec![&idx_f, &idx_t], None).unwrap();
 
         // Step 4: Compute summation polynomial S_b(X).
         // Step 4.a: Compute S_b(X) for b = {f, t}.
@@ -572,21 +553,94 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         let s_t_quotient =
             LabeledPolynomial::new("s_t_quotient".to_string(), s_t_quotient_dense, None, None);
 
-        let (s_comms, s_comm_rands) = PC::commit(
-            committer_key,
-            vec![
-                &s_f,
-                &s_f_rotated_gamma,
-                &s_f_quotient,
-                &s_t,
-                &s_t_rotated_gamma,
-                &s_t_quotient,
-            ],
-            None,
-        )
-        .unwrap();
+        let (s_comms, s_comm_rands) = PC::commit(committer_key, vec![&s_f, &s_t], None).unwrap();
 
         // Step 5: Compute induction polynomial B_b(X), which contains partial sums
+        // Step 5.a: Compute B_b(X) for b = {f, t}.
+        let mut b_f_evals = vec![F::zero(); f_domain_size];
+        for i in 0..f_domain_num_cosets {
+            let mut b_f_sum = F::zero();
+            let coset_sum_piece = s_f_evals[i] / F::from(coset_domain_size as u64); // the sum over this coset divided by the coset size
+            for j in 0..coset_domain_size {
+                b_f_sum += f_evals[j * f_domain_num_cosets + i] * beta_powers[j] - coset_sum_piece;
+                b_f_evals[j * f_domain_num_cosets + i] = b_f_sum;
+            }
+        }
+        let b_f =
+            LabeledPolynomial::new("b_f".to_string(), poly_from_evals(&b_f_evals), None, None);
+        b_f_evals.rotate_right(f_domain_num_cosets);
+        let b_f_rotated_gamma = LabeledPolynomial::new(
+            "b_f_rotated_gamma".to_string(),
+            poly_from_evals(&b_f_evals),
+            None,
+            None,
+        );
+        let mut f_evals_rotated_gamma = f_evals.clone();
+        f_evals_rotated_gamma.rotate_right(f_domain_num_cosets);
+        let f_rotated_gamma = LabeledPolynomial::new(
+            "f_rotated_gamma".to_string(),
+            poly_from_evals(&f_evals_rotated_gamma),
+            None,
+            None,
+        );
+        // Quotient polynomial for zero test in Step 5.b for f polynomial
+        // Q(X) = (B_f(X) - B_f(\gamma X) + I_f(\gamma X) * f(\gamma X) - S_f(X)/m) / (X^(d_f*m) - 1)
+        let b_f_quotient_dense = b_f
+            .sub(b_f_rotated_gamma.polynomial())
+            .add(
+                idx_f_rotated_gamma
+                    .polynomial()
+                    .mul(f_rotated_gamma.polynomial()),
+            )
+            .sub(s_f_quotient.polynomial())
+            .divide_by_vanishing_poly(f_domain)
+            .unwrap()
+            .0;
+        let b_f_quotient =
+            LabeledPolynomial::new("b_f_quotient".to_string(), b_f_quotient_dense, None, None);
+
+        // Now
+        let mut b_t_evals = vec![F::zero(); t_domain_size];
+        for i in 0..t_domain_num_cosets {
+            let mut b_t_sum = F::zero();
+            let coset_sum_piece = s_t_evals[i] / F::from(coset_domain_size as u64); // the sum over this coset divided by the coset size
+            for j in 0..coset_domain_size {
+                b_t_sum += t_evals[j * t_domain_num_cosets + i] * beta_powers[j] - coset_sum_piece;
+                b_t_evals[j * t_domain_num_cosets + i] = b_t_sum;
+            }
+        }
+        let b_t =
+            LabeledPolynomial::new("b_t".to_string(), poly_from_evals(&b_t_evals), None, None);
+        b_t_evals.rotate_right(t_domain_num_cosets);
+        let b_t_rotated_gamma = LabeledPolynomial::new(
+            "b_t_rotated_gamma".to_string(),
+            poly_from_evals(&b_t_evals),
+            None,
+            None,
+        );
+        let mut t_evals_rotated_gamma = t_evals.clone();
+        t_evals_rotated_gamma.rotate_right(t_domain_num_cosets);
+        let t_rotated_gamma = LabeledPolynomial::new(
+            "t_rotated_gamma".to_string(),
+            poly_from_evals(&t_evals_rotated_gamma),
+            None,
+            None,
+        );
+        // Quotient polynomial for zero test in Step 5.b for t polynomial
+        // Q(X) = (B_t(X) - B_t(\gamma X) + I_t(\gamma X) * t(\gamma X) - S_t(X)/m) / (X^(d_t*m) - 1)
+        let b_t_quotient_dense = b_t
+            .sub(b_t_rotated_gamma.polynomial())
+            .add(
+                idx_t_rotated_gamma
+                    .polynomial()
+                    .mul(t_rotated_gamma.polynomial()),
+            )
+            .sub(s_t_quotient.polynomial())
+            .divide_by_vanishing_poly(t_domain)
+            .unwrap()
+            .0;
+        let b_t_quotient =
+            LabeledPolynomial::new("b_t_quotient".to_string(), b_t_quotient_dense, None, None);
 
         // Step 6: Compute inverse polynomial U_b(X)
 
@@ -599,11 +653,11 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         let pc_proof = PC::open_combinations(
             &committer_key,
             &lc_s,
-            vec![&c, &c_rotated_gamma, &c_quotient],
-            vec![&c_comm, &c_rotated_comm, &c_quotient_comm],
+            vec![&c, &c_quotient],
+            vec![&c_comm, &c_quotient_comm],
             &query_set,
             opening_challenge,
-            vec![&c_comm_rand, &c_rotated_comm_rand, &c_quotient_comm_rand],
+            vec![&c_comm_rand, &c_quotient_comm_rand],
             None, // TODO: replace this with zk_rng
         )
         .map_err(Error::from_pc_err)?;
