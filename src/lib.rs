@@ -1,5 +1,5 @@
+use ark_ff::Field;
 use ark_std::rand::RngCore;
-use ark_ff::{Field};
 
 pub mod error;
 pub mod rng;
@@ -8,7 +8,7 @@ pub mod rng;
 pub mod coset_lookup;
 
 // Implementation of naive linear combination vector lookup
-//pub mod naive_lc
+pub mod naive;
 
 pub trait VectorLookup<F: Field> {
     type Error;
@@ -31,7 +31,7 @@ pub trait VectorLookup<F: Field> {
         vector_size: usize,
         lookup_size: usize,
         table_size: usize,
-    ) -> Result<(Self::ProverKey, Self::VerifierKey), Self::Error>; 
+    ) -> Result<(Self::ProverKey, Self::VerifierKey), Self::Error>;
 
     /// Perform vector lookup and produce proof
     fn prove(
