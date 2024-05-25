@@ -160,12 +160,12 @@ mod tests {
         ];
         
         let t_evals = vec![
-            Fr::from(1), Fr::from(1), Fr::from(2), Fr::from(1),
+            Fr::from(1), Fr::from(1), Fr::from(2), Fr::from(2),
             Fr::from(2), Fr::from(1), Fr::from(1), Fr::from(3),
-            Fr::from(1), Fr::from(1), Fr::from(2), Fr::from(1),
+            Fr::from(1), Fr::from(1), Fr::from(2), Fr::from(2),
             Fr::from(2), Fr::from(1), Fr::from(1), Fr::from(3),
         ]; // (1, 2, 1, 2), (1, 1, 1, 1), (2, 1, 2, 1), (2, 3, 2, 3)
-        let subvector_size = 2;
+        let subvector_size = 4;
         // Universal setup
         let universal_srs = CosetLookupInst::universal_setup(64, rng).unwrap();
 

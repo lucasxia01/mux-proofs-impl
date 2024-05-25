@@ -244,6 +244,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
                     .collect()
             })
             .collect();
+        println!("f_vecs: {:?}", f_vecs);
         let t_vecs: Vec<Vec<F>> = (0..t_domain_num_cosets)
             .map(|coset_idx| {
                 (0..coset_domain_size)
@@ -251,11 +252,14 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
                     .collect()
             })
             .collect();
+        println!("t_vecs: {:?}", t_vecs);
         // Count how many each vector appears in t_vecs.
         let mut f_vec_counts: HashMap<Vec<F>, u32> = HashMap::new();
         for f_vec in &f_vecs {
             *f_vec_counts.entry(f_vec.clone()).or_insert(0) += 1;
         }
+
+        // DEBUGGING START to check that each vector appears in t_vecs
         let mut t_vec_counts: HashMap<Vec<F>, u32> = HashMap::new();
         for t_vec in &t_vecs {
             *t_vec_counts.entry(t_vec.clone()).or_insert(0) += 1;
@@ -266,10 +270,17 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
                 panic!("f contains vec that is not in {:?}", k);
             }
         }
+        // DEBUGGING END
+
         // Step 1.a: Define c(X) over t_domain
         let mut c_evals: Vec<F> = vec![F::zero(); t_domain_size];
+
         for i in 0..t_domain_size {
-            c_evals[i] = F::from(f_vec_counts[&t_vecs[i % t_domain_num_cosets].clone()]);
+            let t_vec = t_vecs[i % t_domain_num_cosets].clone();
+            f_vec_counts.entry(t_vec.clone()).or_insert(0);
+            println!("f_vec_count: {}", f_vec_counts[&t_vec.clone()]);
+
+            c_evals[i] = F::from(f_vec_counts[&t_vec]);
         }
         println!("Count poly in eval form: {:?}", c_evals);
 
