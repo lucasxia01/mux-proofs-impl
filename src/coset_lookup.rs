@@ -147,6 +147,9 @@ pub struct Proof<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>> {
     T_t_eval_at_omega_t_pt: F,
     T_f_eval_at_pt: F,
     T_t_eval_at_pt: F,
+    quotient_V_eval_at_pt: F,
+    quotient_H_f_eval_at_pt: F,
+    quotient_H_t_eval_at_pt: F,
 }
 
 pub struct CosetLookup<
@@ -561,8 +564,8 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         // Quotient poly over coset domain, 4 zero tests associated with it
         let lagrange_0_V: DensePolynomial<F> = ith_lagrange_poly(0, coset_domain).into();
         let one_poly = &DensePolynomial::from_coefficients_vec(vec![F::one()]);
-        let V_zero_test_0 = (idx_f.sub(one_poly)).mul(&lagrange_0_V);
-        let V_zero_test_1 = (idx_t.sub(one_poly)).mul(&lagrange_0_V);
+        let V_zero_test_0 = (&idx_f.sub(one_poly)) * (&lagrange_0_V);
+        let V_zero_test_1 = (&idx_t.sub(one_poly)) * (&lagrange_0_V);
         let V_last_zero =
             &DensePolynomial::from_coefficients_vec(vec![-coset_domain.group_gen_inv, F::one()]);
         let V_zero_test_2 = (idx_f_rotated_gamma.sub(&idx_f.mul(beta))).mul(V_last_zero);
@@ -692,7 +695,6 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         let quotient_H_f_comm_rand = quotient_comm_rands[1].clone();
         let quotient_H_t_comm_rand = quotient_comm_rands[2].clone();
 
-        let opening_challenge = F::rand(&mut fs_rng);
         let comms = vec![
             &f_comm,
             &t_comm,
@@ -730,15 +732,32 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             &quotient_H_t_comm_rand,
         ];
         let polys = [
-            &f, &t, &c, &idx_f, &idx_t, &s_f, &s_t, &b_f, &b_t, &u_f, &u_t, &T_f, &T_t,
+            &f,
+            &t,
+            &c,
+            &idx_f,
+            &idx_t,
+            &s_f,
+            &s_t,
+            &b_f,
+            &b_t,
+            &u_f,
+            &u_t,
+            &T_f,
+            &T_t,
+            &quotient_V_labeled,
+            &quotient_H_f_labeled,
+            &quotient_H_t_labeled,
         ];
         // Get the verifier query challenge
         let pt = F::rand(&mut fs_rng);
         let gamma_pt = pt * coset_domain.group_gen;
         let omega_f_pt = pt * f_domain.group_gen;
         let omega_t_pt = pt * t_domain.group_gen;
-        let mut query_set = Self::get_query_set(pt, gamma_pt, omega_f_pt, omega_t_pt);
+        let query_set = Self::get_query_set(pt, gamma_pt, omega_f_pt, omega_t_pt);
 
+        let opening_challenge = F::rand(&mut fs_rng);
+        println!("before batch open");
         let pc_proof = PC::batch_open(
             committer_key,
             polys,             // all the polys, including the quotient polynomials (no rotated)
@@ -749,7 +768,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             None,
         )
         .map_err(Error::from_pc_err)?;
-
+        println!("after batch open");
         // lets say the zero test is A(X) = B(gamma X) over G, C(X) = 0 over G
         // have to send commitments to A, B, and Q_G(X) = LC/V_G(X)
         // we need B(gamma X) to compute Q_G(X)
@@ -780,6 +799,9 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         let T_t_eval_at_omega_t_pt = T_t.evaluate(&omega_t_pt);
         let T_f_eval_at_pt = T_f.evaluate(&pt);
         let T_t_eval_at_pt = T_t.evaluate(&pt);
+        let quotient_V_eval_at_pt = quotient_V_labeled.evaluate(&pt);
+        let quotient_H_f_eval_at_pt = quotient_H_f_labeled.evaluate(&pt);
+        let quotient_H_t_eval_at_pt = quotient_H_t_labeled.evaluate(&pt);
 
         return Ok(Proof {
             c_comm,
@@ -821,6 +843,9 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             T_t_eval_at_omega_t_pt,
             T_f_eval_at_pt,
             T_t_eval_at_pt,
+            quotient_V_eval_at_pt,
+            quotient_H_f_eval_at_pt,
+            quotient_H_t_eval_at_pt,
         });
     }
 
@@ -846,7 +871,12 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         let beta = F::rand(&mut fs_rng);
 
         // Get batching challenge
-        let opening_challenge = F::rand(&mut fs_rng);
+        let MAX_ZERO_TEST_LENGTH = 7;
+        let batching_challenge = F::rand(&mut fs_rng);
+        let mut batching_challenge_powers = vec![F::one(); MAX_ZERO_TEST_LENGTH];
+        for i in 1..MAX_ZERO_TEST_LENGTH {
+            batching_challenge_powers[i] = batching_challenge_powers[i - 1] * batching_challenge;
+        }
 
         // Get the verifier query challenge
         let pt = F::rand(&mut fs_rng);
@@ -920,8 +950,19 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         );
         evaluations.insert(("T_f".to_string(), pt), proof.T_f_eval_at_pt);
         evaluations.insert(("T_t".to_string(), pt), proof.T_t_eval_at_pt);
+        evaluations.insert(("quotient_V".to_string(), pt), proof.quotient_V_eval_at_pt);
+        evaluations.insert(
+            ("quotient_H_f".to_string(), pt),
+            proof.quotient_H_f_eval_at_pt,
+        );
+        evaluations.insert(
+            ("quotient_H_t".to_string(), pt),
+            proof.quotient_H_t_eval_at_pt,
+        );
 
-        let result = PC::batch_check(
+        let opening_challenge = F::rand(&mut fs_rng);
+
+        let mut result = PC::batch_check(
             verifier_key,
             commitments,
             &query_set,
@@ -930,8 +971,67 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             opening_challenge,
             &mut fs_rng,
         )
-        .map_err(Error::from_pc_err);
-        return Ok(true);
+        .map_err(Error::from_pc_err)?;
+
+        let pt_to_m = pt.pow(&[coset_domain.size as u64]);
+        // Now check the zero tests, mirror it from the prover
+        // Check the zero tests associated with quotient_V
+        let lagrange_0_V = ith_lagrange_poly_eval(0, coset_domain, pt);
+        let V_zero_test_0 = (proof.idx_f_eval_at_pt - F::one()) * lagrange_0_V;
+        let V_zero_test_1 = (proof.idx_t_eval_at_pt - F::one()) * lagrange_0_V;
+        let V_last_zero = pt - coset_domain.group_gen_inv;
+        let V_zero_test_2 =
+            (proof.idx_f_eval_at_gamma_pt - (proof.idx_f_eval_at_pt * beta)) * V_last_zero;
+        let V_zero_test_3 =
+            (proof.idx_t_eval_at_gamma_pt - (proof.idx_t_eval_at_pt * beta)) * V_last_zero;
+        let V_zero_test_result = (V_zero_test_0
+            + V_zero_test_1.mul(batching_challenge_powers[1])
+            + V_zero_test_2.mul(batching_challenge_powers[2])
+            + V_zero_test_3.mul(batching_challenge_powers[3]))
+            - (pt_to_m - F::one()) * proof.quotient_V_eval_at_pt;
+        result = result && V_zero_test_result.is_zero();
+        assert!(V_zero_test_result.is_zero());
+
+        // Check the zero tests associated with quotient_H_f
+        let H_f_last_coset_vanishing = pt_to_m
+            - F::from(
+                f_domain
+                    .group_gen
+                    .pow(&[(f_domain.size - coset_domain.size) as u64]),
+            );
+        let H_f_zero_test_0 =
+            (proof.idx_f_eval_at_pt - proof.idx_f_eval_at_omega_f_pt) * H_f_last_coset_vanishing;
+        let H_f_zero_test_1 = proof.s_f_eval_at_gamma_pt - proof.s_f_eval_at_pt;
+
+        // let H_f_zero_test_2 = proof.b_f_eval_at_gamma_pt
+        //     - proof.b_f_eval_at_pt
+        //     - (proof.idx_f_eval_at_gamma_pt * proof.f_eval_at_gamma_pt)+
+        //         .sub(b_f.polynomial())
+        //         .sub(&idx_f_rotated_gamma.mul(f_rotated_gamma.polynomial()))
+        //         .add(s_f.mul(coset_domain.size_inv));
+        // let alpha_poly = &DensePolynomial::from_coefficients_vec(vec![alpha]);
+        // let H_f_zero_test_3 = u_f.mul(&alpha_poly.sub(s_f.polynomial())).sub(one_poly);
+        // let H_f_last_zero =
+        //     &DensePolynomial::from_coefficients_vec(vec![-f_domain.group_gen_inv, F::one()]);
+        // let H_f_zero_test_4 =
+        //     (T_f_rotated_omega.polynomial() + &u_f.sub(T_f.polynomial())).mul(H_f_last_zero);
+        // let lagrange_last_H_f: DensePolynomial<F> =
+        //     ith_lagrange_poly(f_domain_size - 1, f_domain).into();
+        // let H_f_zero_test_5 = lagrange_last_H_f.mul(&T_f.sub(u_f.polynomial()));
+        // let lagrange_0_H_f: DensePolynomial<F> = ith_lagrange_poly(0, f_domain).into();
+        // let H_f_zero_test_6 = lagrange_0_H_f.mul(&T_f.sub(T_t.polynomial()));
+        // // Now batch together all the zero tests
+
+        // let (quotient_H_f, rem_H_f) = (H_f_zero_test_0
+        //     + H_f_zero_test_1.mul(batching_challenge_powers[1])
+        //     + H_f_zero_test_2.mul(batching_challenge_powers[2])
+        //     + H_f_zero_test_3.mul(batching_challenge_powers[3])
+        //     + H_f_zero_test_4.mul(batching_challenge_powers[4])
+        //     + H_f_zero_test_5.mul(batching_challenge_powers[5])
+        //     + H_f_zero_test_6.mul(batching_challenge_powers[6]))
+        // .divide_by_vanishing_poly(f_domain)
+        // .unwrap();
+        return Ok(result);
     }
 
     fn get_query_set(pt: F, gamma_pt: F, omega_f_pt: F, omega_t_pt: F) -> QuerySet<F> {
@@ -962,6 +1062,9 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         query_set.insert(("u_t".to_string(), ("pt".to_string(), pt)));
         query_set.insert(("T_f".to_string(), ("pt".to_string(), pt)));
         query_set.insert(("T_t".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("quotient_V".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("quotient_H_f".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("quotient_H_t".to_string(), ("pt".to_string(), pt)));
         return query_set;
     }
 }
