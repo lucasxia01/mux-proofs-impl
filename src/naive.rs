@@ -1,20 +1,15 @@
 #![allow(non_snake_case)]
-use ark_ff::to_bytes;
 use ark_poly::{univariate::DensePolynomial, Evaluations};
 use ark_poly::{EvaluationDomain, Polynomial, Radix2EvaluationDomain};
 
-use ark_bls12_381::Fr;
-use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
-use ark_ff::{fields::batch_inversion, FftField, One, Zero};
+use ark_ec::PairingEngine;
+use ark_ff::{fields::batch_inversion, FftField, Zero};
 use ark_poly::UVPolynomial;
 use ark_poly_commit::{
     LabeledCommitment, LabeledPolynomial, PCCommitment, PolynomialCommitment, QuerySet,
 };
 use ark_std::rand::RngCore;
-use ark_std::{end_timer, ops::*, start_timer};
 use itertools::Itertools;
-use std::fmt::format;
-use std::fs;
 use std::ops::Mul;
 
 use crate::rng::FiatShamirRng;
@@ -48,7 +43,8 @@ pub fn lc_comms<
 
 pub fn consecutive_sum<F: FftField>(vec: &[F]) -> Vec<F> {
     let mut xs = vec.iter();
-    let vs = std::iter::successors(Some(F::zero()), |acc| xs.next().map(|n| *n + *acc)).skip(1);
+    let vs =
+        std::iter::successors(Some(F::zero()), |acc| xs.next().map(|n| *n + *acc)).take(vec.len());
     vs.collect::<Vec<F>>()
 }
 
@@ -61,11 +57,14 @@ pub fn compute_denoms<F: FftField>(denominator: &[F], alpha: F) -> Vec<F> {
 pub fn compute_terms<F: FftField>(numerator: Option<&[F]>, denominator: &[F], alpha: F) -> Vec<F> {
     let denoms = compute_denoms(denominator, alpha);
     match numerator {
-        Some(nums) => denoms
-            .iter()
-            .zip(nums.iter())
-            .map(|(denom, num)| *denom * num)
-            .collect::<Vec<F>>(),
+        Some(nums) => {
+            assert!(nums.len() == denoms.len());
+            denoms
+                .iter()
+                .zip(nums.iter())
+                .map(|(denom, num)| *denom * num)
+                .collect::<Vec<F>>()
+        }
         None => denoms,
     }
 }
@@ -190,50 +189,22 @@ pub fn compute_round_4_polys<F: FftField>(
     let s_n_poly = DensePolynomial::from_coefficients_vec(vec![sum / F::from(V.size() as u64)]);
     let s_d_poly = DensePolynomial::from_coefficients_vec(vec![sum / F::from(H.size() as u64)]);
     let zt_V_1 = &(&(f + &alpha_poly) * f_hab) - &one_poly;
-    let zt_V_2 = &(s_f + f_hab) - &(s_f_rot - &s_n_poly);
-    let zt_V = &zt_V_1 * (&zt_V_2.mul(zeta));
+    let zt_V_2 = &(s_f + f_hab) - &(s_f_rot + &s_n_poly);
+    let zt_V = &zt_V_1 + (&zt_V_2.mul(zeta));
     let zt_H_1 = &(&(t + &alpha_poly) * t_hab) - c;
-    let zt_H_2 = &(s_t + t_hab) - &(s_t_rot - &s_d_poly);
-    let zt_H = &zt_H_1 * (&zt_H_2.mul(zeta));
+    let zt_H_2 = &(s_t + t_hab) - &(s_t_rot + &s_d_poly);
+    let zt_H = &zt_H_1 + (&zt_H_2.mul(zeta));
 
-    let q_V = zt_V.divide_by_vanishing_poly(V).unwrap().0;
-    let q_H = zt_H.divide_by_vanishing_poly(H).unwrap().0;
+    let (q_V, r_V) = zt_V.divide_by_vanishing_poly(V).unwrap();
+    let (q_H, r_H) = zt_H.divide_by_vanishing_poly(H).unwrap();
+
+    assert!(zt_V_1.divide_by_vanishing_poly(V).unwrap().1.is_zero());
+    assert!(zt_H_1.divide_by_vanishing_poly(H).unwrap().1.is_zero());
+    assert!(zt_V_2.divide_by_vanishing_poly(V).unwrap().1.is_zero());
+    assert!(zt_H_2.divide_by_vanishing_poly(H).unwrap().1.is_zero());
+    assert!(r_V.is_zero());
+    assert!(r_H.is_zero());
     (q_V, q_H)
-}
-
-pub fn prover<F: FftField>(f_vec: &[F], t_vec: &[F], c_vec: &[F]) {
-    let n = f_vec.len();
-    let d = t_vec.len();
-    let V = Radix2EvaluationDomain::<F>::new(n).unwrap();
-    let H = Radix2EvaluationDomain::<F>::new(d).unwrap();
-
-    // Round 2
-    let (f, t, c) = compute_round_2_polys(&f_vec, &t_vec, &c_vec, V.clone(), H.clone());
-    let alpha = F::from(3 as u64);
-
-    // Round 3
-    let (f_hab, t_hab, s_f, s_t, s_f_rot, s_t_rot, sum) =
-        compute_round_3_polys(&f_vec, &t_vec, &c_vec, alpha, V.clone(), H.clone());
-    let zeta = F::from(5 as u64);
-
-    // Round 4
-    let (q_V, q_H) = compute_round_4_polys(
-        &f,
-        &t,
-        &c,
-        &f_hab,
-        &t_hab,
-        &s_f,
-        &s_t,
-        &s_f_rot,
-        &s_t_rot,
-        sum,
-        alpha,
-        zeta,
-        V.clone(),
-        H.clone(),
-    );
-    let z = F::from(2 as u64);
 }
 
 pub struct NaiveLookup<F: FftField, PC, FS: FiatShamirRng, E: PairingEngine<Fr = F>>
@@ -251,9 +222,7 @@ where
 
 #[derive(Clone)]
 pub struct NaivePK<F: FftField, P: Clone> {
-    vector_size: usize,
     lookup_size: usize,
-    table_size: usize,
     V: Radix2EvaluationDomain<F>,
     H: Radix2EvaluationDomain<F>,
     pc_pk: P,
@@ -261,9 +230,7 @@ pub struct NaivePK<F: FftField, P: Clone> {
 
 #[derive(Clone)]
 pub struct NaiveVK<F: FftField, V: Clone> {
-    vector_size: usize,
     lookup_size: usize,
-    table_size: usize,
     V: Radix2EvaluationDomain<F>,
     H: Radix2EvaluationDomain<F>,
     pc_vk: V,
@@ -325,17 +292,13 @@ where
         )?;
         Ok((
             NaivePK {
-                vector_size,
                 lookup_size,
-                table_size,
                 V: Radix2EvaluationDomain::<F>::new(vector_size / lookup_size).unwrap(),
                 H: Radix2EvaluationDomain::<F>::new(table_size / lookup_size).unwrap(),
                 pc_pk: pk,
             },
             NaiveVK {
-                vector_size,
                 lookup_size,
-                table_size,
                 V: Radix2EvaluationDomain::<F>::new(vector_size / lookup_size).unwrap(),
                 H: Radix2EvaluationDomain::<F>::new(table_size / lookup_size).unwrap(),
                 pc_vk: vk,
@@ -373,8 +336,8 @@ where
 
     fn prove(
         pk: &Self::ProverKey,
-        f_comm: &Self::VectorCommitment,
-        t_comm: &Self::VectorCommitment,
+        _f_comm: &Self::VectorCommitment,
+        _t_comm: &Self::VectorCommitment,
         f_vals: Vec<F>,
         t_vals: Vec<F>,
         _f: Self::VectorRepr,
@@ -383,6 +346,7 @@ where
         let mut fs_rng = FS::initialize(b"naiveLC");
         let beta = F::rand(&mut fs_rng);
         let (f_vec, t_vec, c_vec) = compute_round_1(&f_vals[..], &t_vals[..], beta, pk.lookup_size);
+
         let (f, t, c) = compute_round_2_polys(&f_vec, &t_vec, &c_vec, pk.V.clone(), pk.H.clone());
         let f_labeled = LabeledPolynomial::new("f".to_string(), f.clone(), None, None);
         let t_labeled = LabeledPolynomial::new("t".to_string(), t.clone(), None, None);
@@ -478,7 +442,15 @@ where
     ) -> Result<bool, Self::Error> {
         let mut fs_rng = FS::initialize(b"naiveLC");
         let beta = F::rand(&mut fs_rng);
-        //TODO combine commitments
+
+        let m = vk.lookup_size;
+        let beta_pows = std::iter::successors(Some(F::one()), |n| Some(*n * beta))
+            .take(m)
+            .collect::<Vec<F>>();
+
+        let _ = lc_comms::<F, E, PC>(&f_comm.0, &beta_pows);
+        let _ = lc_comms::<F, E, PC>(&t_comm.0, &beta_pows);
+
         let alpha = F::rand(&mut fs_rng);
         let zeta = F::rand(&mut fs_rng);
         let z = F::rand(&mut fs_rng);
@@ -554,152 +526,10 @@ where
     }
 }
 
-/*impl<F: FftField, PC, FS: FiatShamirRng, E: PairingEngine<Fr = F>> NaiveLookup<F, PC, FS, E>
-where
-    PC: PolynomialCommitment<
-        F,
-        DensePolynomial<F>,
-        Commitment = ark_poly_commit::marlin_pc::Commitment<E>,
-    >,
-{
-    pub fn new(vector_size: usize, lookup_size: usize, table_size: usize) -> Self {
-        Self {
-            _pc: PhantomData,
-            _fs: PhantomData,
-            vector_size,
-            lookup_size,
-            table_size,
-            V: Radix2EvaluationDomain::<F>::new(vector_size / lookup_size).unwrap(),
-            H: Radix2EvaluationDomain::<F>::new(table_size / lookup_size).unwrap(),
-        }
-    }
-
-    pub fn setup<R: RngCore>(size: usize, rng: &mut R) -> Result<PC::UniversalParams, PC::Error> {
-        let srs = PC::setup(size, None, rng)?;
-        Ok(srs)
-    }
-
-    pub fn index(
-        srs: &PC::UniversalParams,
-        vector_size: usize,
-        lookup_size: usize,
-        table_size: usize,
-    ) -> Result<(PC::CommitterKey, PC::VerifierKey), PC::Error> {
-        let (pk, vk) = PC::trim(
-            srs,
-            *[vector_size, lookup_size, table_size].iter().max().unwrap(),
-            1,
-            None,
-        )?;
-        Ok((pk, vk))
-    }
-
-    pub fn commit_lookup(
-        self,
-        pk: &PC::CommitterKey,
-        f_vals: Vec<F>,
-    ) -> Result<Vec<LabeledCommitment<PC::Commitment>>, PC::Error> {
-        let fs_polys = compute_statement_polys(&f_vals, self.lookup_size, self.V.clone());
-        let labeledpolys = fs_polys
-            .iter()
-            .enumerate()
-            .map(|(i, f)| LabeledPolynomial::new(format!("f{}", i), f.clone(), None, None))
-            .collect::<Vec<_>>();
-        let comms = PC::commit(pk, &labeledpolys, None)?;
-        Ok(comms.0)
-    }
-
-    pub fn commit_table(
-        self,
-        pk: &PC::CommitterKey,
-        t_vals: Vec<F>,
-    ) -> Result<
-        (
-            Vec<LabeledCommitment<PC::Commitment>>,
-            Vec<<PC as PolynomialCommitment<F, DensePolynomial<F>>>::Randomness>,
-        ),
-        PC::Error,
-    > {
-        let ts_polys = compute_statement_polys(&t_vals, self.table_size, self.H.clone());
-        let labeledpolys = ts_polys
-            .iter()
-            .enumerate()
-            .map(|(i, t)| LabeledPolynomial::new(format!("t{}", i), t.clone(), None, None))
-            .collect::<Vec<_>>();
-        let comms = PC::commit(pk, &labeledpolys, None)?;
-        Ok(comms)
-    }
-
-    pub fn prove(
-        self,
-        pk: &PC::CommitterKey,
-        f_comm: (
-            Vec<LabeledCommitment<PC::Commitment>>,
-            Vec<<PC as PolynomialCommitment<F, DensePolynomial<F>>>::Randomness>,
-        ),
-        t_comm: (
-            Vec<LabeledCommitment<PC::Commitment>>,
-            Vec<<PC as PolynomialCommitment<F, DensePolynomial<F>>>::Randomness>,
-        ),
-        f_vals: Vec<F>,
-        t_vals: Vec<F>,
-    ) -> Result<PC::BatchProof, PC::Error> {
-        // should be statements here
-        let mut fs_rng = FS::initialize(b"naiveLC");
-        let beta = F::rand(&mut fs_rng);
-
-        let (f_vec, t_vec, c_vec) =
-            compute_round_1(&f_vals[..], &t_vals[..], beta, self.lookup_size);
-        let (f, t, c) =
-            compute_round_2_polys(&f_vec, &t_vec, &c_vec, self.V.clone(), self.H.clone());
-        let c_labeled = vec![LabeledPolynomial::new(
-            "c".to_string(),
-            c.clone(),
-            None,
-            None,
-        )];
-        let c_comm = PC::commit(pk, &c_labeled, None)?;
-        let c_eval = c.evaluate(&beta);
-        let mut query_set = QuerySet::new();
-        query_set.insert(("c".to_string(), ("beta".to_string(), beta)));
-        let pc_proof = PC::batch_open(
-            pk,
-            &c_labeled, // all the polys, including the quotient polynomials (no rotated)
-            &c_comm.0,  // same as polys but commitments
-            &query_set, // all query points and polynomials
-            F::rand(&mut fs_rng), // from f-s
-            &c_comm.1,  // same as polys but comm rands
-            None,
-        );
-        todo!()
-    }
-
-    pub fn verify(
-        vk: &PC::VerifierKey,
-        c_comm: Vec<LabeledCommitment<PC::Commitment>>,
-        proof: PC::BatchProof,
-    ) -> Result<bool, PC::Error> {
-        let mut fs_rng = FS::initialize(b"naiveLC");
-        let mut query_set = QuerySet::new();
-        query_set.insert(("c".to_string(), ("beta".to_string(), F::rand(&mut fs_rng))));
-        let mut evaluations = ark_poly_commit::Evaluations::new();
-        evaluations.insert(("c".to_string(), F::from(1 as u64)), F::from(1 as u64));
-        let result = PC::batch_check(
-            vk,
-            &c_comm,
-            &query_set,
-            &evaluations,
-            &proof,
-            F::from(5 as u64),
-            &mut fs_rng,
-        )?;
-        Ok(result)
-    }
-}*/
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ark_bls12_381::Fr;
 
     #[test]
     fn round_1() {
@@ -713,7 +543,16 @@ mod tests {
             Fr::from(3),
             Fr::from(4),
         ];
-        let ts = vec![Fr::from(1), Fr::from(2), Fr::from(3), Fr::from(4)];
+        let ts = vec![
+            Fr::from(1),
+            Fr::from(2),
+            Fr::from(3),
+            Fr::from(4),
+            Fr::from(5),
+            Fr::from(6),
+            Fr::from(7),
+            Fr::from(8),
+        ];
         let beta = Fr::from(7 as u64);
         let (f_vec, t_vec, c_vec) = compute_round_1(&fs, &ts, beta, 2);
         assert_eq!(
@@ -727,5 +566,44 @@ mod tests {
         );
         assert_eq!(t_vec, vec![Fr::from(1 + 2 * 7), Fr::from(3 + 4 * 7)]);
         assert_eq!(c_vec, vec![Fr::from(3), Fr::from(1)]);
+    }
+
+    #[test]
+    fn test_lookup() {
+        use ark_bls12_381::{Bls12_381, Fr};
+        use ark_poly_commit::marlin_pc::MarlinKZG10;
+        use blake2::Blake2s;
+        use rand_chacha::ChaChaRng;
+        type PC = MarlinKZG10<Bls12_381, DensePolynomial<Fr>>;
+        type FS = SimpleHashFiatShamirRng<Blake2s, ChaChaRng>;
+        type NaiveInst = NaiveLookup<Fr, PC, FS, Bls12_381>;
+
+        let f_evals = vec![
+            Fr::from(1),
+            Fr::from(2),
+            Fr::from(3),
+            Fr::from(4),
+            Fr::from(1),
+            Fr::from(2),
+            Fr::from(3),
+            Fr::from(4),
+        ];
+        let t_evals = vec![
+            Fr::from(1),
+            Fr::from(2),
+            Fr::from(3),
+            Fr::from(4),
+            Fr::from(5),
+            Fr::from(6),
+            Fr::from(7),
+            Fr::from(8),
+        ];
+        let srs = NaiveInst::universal_setup(16, &mut ark_std::test_rng()).unwrap();
+        let (pk, vk) = NaiveInst::index(&srs, f_evals.len(), 4, t_evals.len()).unwrap();
+        let (f_comm, _) = NaiveInst::commit_lookup(&pk, f_evals.clone()).unwrap();
+        let (t_comm, _) = NaiveInst::commit_table(&pk, t_evals.clone()).unwrap();
+        let proof = NaiveInst::prove(&pk, &f_comm, &t_comm, f_evals, t_evals, (), ()).unwrap();
+        let result = NaiveInst::verify(&vk, &proof, &f_comm, &t_comm).unwrap();
+        assert!(result);
     }
 }
