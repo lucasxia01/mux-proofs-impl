@@ -46,7 +46,7 @@ pub fn get_mult_subgroup_vanishing_poly<F: FftField>(n: usize) -> SparsePolynomi
 
 pub fn ith_lagrange_poly<F: FftField>(
     i: usize,
-    domain: Radix2EvaluationDomain<F>,
+    domain: &Radix2EvaluationDomain<F>,
 ) -> SparsePolynomial<F> {
     let omega_to_i = domain.group_gen.pow(&[i as u64]);
     let coeff_i = omega_to_i * domain.size_inv;
@@ -59,7 +59,7 @@ pub fn ith_lagrange_poly<F: FftField>(
 
 pub fn ith_lagrange_poly_eval<F: FftField>(
     i: usize,
-    domain: Radix2EvaluationDomain<F>,
+    domain: &Radix2EvaluationDomain<F>,
     evaluation_point: F,
 ) -> F {
     let omega_to_i = domain.group_gen.pow(&[i as u64]);
@@ -211,22 +211,21 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
     // Inputs: Prover key, (vector commitment, table commitment), (vector elements, table elements)
     pub fn prove(
         committer_key: &PC::CommitterKey,
+        f_domain: &Radix2EvaluationDomain<F>,
+        t_domain: &Radix2EvaluationDomain<F>,
+        coset_domain: &Radix2EvaluationDomain<F>,
         f_comm: &LabeledCommitment<PC::Commitment>,
         t_comm: &LabeledCommitment<PC::Commitment>,
         f_evals: Vec<F>,
         t_evals: Vec<F>,
         f: LabeledPolynomial<F, DensePolynomial<F>>,
         t: LabeledPolynomial<F, DensePolynomial<F>>,
-        coset_domain_size: usize,
     ) -> Result<Proof<F, PC>, Error<PC::Error>> {
         // TODO: fix this initialization to include all public inputs
         let mut fs_rng = FS::initialize(&to_bytes![&Self::PROTOCOL_NAME].unwrap());
         let f_domain_size = f_evals.len();
         let t_domain_size = t_evals.len();
-        let f_domain = Radix2EvaluationDomain::<F>::new(f_domain_size).unwrap();
-        let t_domain = Radix2EvaluationDomain::<F>::new(t_domain_size).unwrap();
-        let coset_domain = Radix2EvaluationDomain::<F>::new(coset_domain_size).unwrap();
-        let one_domain = Radix2EvaluationDomain::<F>::new(1).unwrap();
+        let coset_domain_size = coset_domain.size as usize;
         assert_eq!(f_domain_size % coset_domain_size, 0);
         assert_eq!(t_domain_size % coset_domain_size, 0);
         let f_domain_num_cosets = f_domain_size / coset_domain_size;
@@ -574,7 +573,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             + V_zero_test_1.mul(batching_challenge_powers[1])
             + V_zero_test_2.mul(batching_challenge_powers[2])
             + V_zero_test_3.mul(batching_challenge_powers[3]))
-        .divide_by_vanishing_poly(coset_domain)
+        .divide_by_vanishing_poly(coset_domain.clone())
         .unwrap();
 
         // Quotient poly over f domain, 7 zero tests associated with it
@@ -618,7 +617,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             + H_f_zero_test_4.mul(batching_challenge_powers[4])
             + H_f_zero_test_5.mul(batching_challenge_powers[5])
             + H_f_zero_test_6.mul(batching_challenge_powers[6]))
-        .divide_by_vanishing_poly(f_domain)
+        .divide_by_vanishing_poly(f_domain.clone()) // TODO: avoid clone
         .unwrap();
 
         // Quotient poly over t domain, 7 zero tests associated with it
@@ -660,7 +659,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             + H_t_zero_test_4.mul(batching_challenge_powers[4])
             + H_t_zero_test_5.mul(batching_challenge_powers[5])
             + H_t_zero_test_6.mul(batching_challenge_powers[6]))
-        .divide_by_vanishing_poly(t_domain)
+        .divide_by_vanishing_poly(t_domain.clone())
         .unwrap();
 
         // assert that remainders are all 0
@@ -851,6 +850,9 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
 
     pub fn verify(
         verifier_key: &PC::VerifierKey,
+        f_domain: &Radix2EvaluationDomain<F>,
+        t_domain: &Radix2EvaluationDomain<F>,
+        coset_domain: &Radix2EvaluationDomain<F>,
         proof: &Proof<F, PC>,
         f_comm: &LabeledCommitment<PC::Commitment>,
         t_comm: &LabeledCommitment<PC::Commitment>,
@@ -858,13 +860,6 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         // Fiat-shamir setup
         // TODO: fix this initialization to include all public inputs
         let mut fs_rng = FS::initialize(&to_bytes![&Self::PROTOCOL_NAME].unwrap());
-
-        // Set up
-        // TODO fix this when test is unlocked by Nirvan
-        let f_domain = Radix2EvaluationDomain::<F>::new(8).unwrap();
-        let t_domain = Radix2EvaluationDomain::<F>::new(2).unwrap();
-        let coset_domain = Radix2EvaluationDomain::<F>::new(1).unwrap();
-        let one_domain = Radix2EvaluationDomain::<F>::new(1).unwrap();
 
         // Compute challenges alpha and beta
         let alpha = F::rand(&mut fs_rng);
