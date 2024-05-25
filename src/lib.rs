@@ -6,7 +6,6 @@ use std::fmt::Debug;
 pub mod error;
 pub mod rng;
 
-
 // Implementation of CosetLookup vector lookup
 pub mod coset_lookup;
 
@@ -21,9 +20,9 @@ pub trait VectorLookup<F: Field> {
     type VectorCommitment: Clone;
     type VectorRepr: Clone;
     type UniversalSRS: Clone;
-    type ProverKey: Clone;
-    type VerifierKey: Clone;
-    type Proof: Clone;
+    type ProverKey;
+    type VerifierKey;
+    type Proof;
 
     /// Generate the one time universal SRS
     fn universal_setup<R: RngCore>(
