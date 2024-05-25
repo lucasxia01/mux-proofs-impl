@@ -123,6 +123,30 @@ pub struct Proof<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>> {
     quotient_H_f_comm: LabeledCommitment<PC::Commitment>,
     quotient_H_t_comm: LabeledCommitment<PC::Commitment>,
     pc_proof: <PC as PolynomialCommitment<F, DensePolynomial<F>>>::BatchProof,
+    c_eval_at_gamma_pt: F,
+    c_eval_at_pt: F,
+    idx_f_eval_at_pt: F,
+    idx_t_eval_at_pt: F,
+    idx_f_eval_at_gamma_pt: F,
+    idx_t_eval_at_gamma_pt: F,
+    idx_f_eval_at_omega_f_pt: F,
+    idx_t_eval_at_omega_t_pt: F,
+    s_f_eval_at_gamma_pt: F,
+    s_t_eval_at_gamma_pt: F,
+    s_f_eval_at_pt: F,
+    s_t_eval_at_pt: F,
+    b_f_eval_at_gamma_pt: F,
+    b_t_eval_at_gamma_pt: F,
+    b_f_eval_at_pt: F,
+    b_t_eval_at_pt: F,
+    f_eval_at_gamma_pt: F,
+    t_eval_at_gamma_pt: F,
+    u_f_eval_at_pt: F,
+    u_t_eval_at_pt: F,
+    T_f_eval_at_omega_f_pt: F,
+    T_t_eval_at_omega_t_pt: F,
+    T_f_eval_at_pt: F,
+    T_t_eval_at_pt: F,
 }
 
 pub struct CosetLookup<
@@ -676,6 +700,8 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
 
         let opening_challenge = F::rand(&mut fs_rng);
         let comms = vec![
+            &f_comm,
+            &t_comm,
             &c_comm,
             &idx_f_comm,
             &idx_t_comm,
@@ -692,6 +718,8 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             &quotient_H_t_comm,
         ];
         let comm_rands = vec![
+            &c_comm_rand, // TODO: actually pass in f and t comm rands
+            &c_comm_rand,
             &c_comm_rand,
             &idx_f_comm_rand,
             &idx_t_comm_rand,
@@ -708,19 +736,40 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             &quotient_H_t_comm_rand,
         ];
         let polys = [
-            &c, &idx_f, &idx_t, &s_f, &s_t, &b_f, &b_t, &u_f, &u_t, &T_f, &T_t,
+            &f, &t, &c, &idx_f, &idx_t, &s_f, &s_t, &b_f, &b_t, &u_f, &u_t, &T_f, &T_t,
         ];
         let mut query_set = QuerySet::new();
-        let query_pt = F::rand(&mut fs_rng);
-        let gamma_query_pt = query_pt * coset_domain.group_gen;
-        let omega_f_query_pt = query_pt * f_domain.group_gen;
-        let omega_t_query_pt = query_pt * t_domain.group_gen;
-        query_set.insert((
-            "c".to_string(),
-            ("gamma_query_pt".to_string(), gamma_query_pt),
-        ));
-        query_set.insert(("c".to_string(), ("query_pt".to_string(), query_pt)));
-        // query_set.insert(("idx_f"))
+        // Get the verifier query challenge
+        let pt = F::rand(&mut fs_rng);
+        let gamma_pt = pt * coset_domain.group_gen;
+        let omega_f_pt = pt * f_domain.group_gen;
+        let omega_t_pt = pt * t_domain.group_gen;
+        query_set.insert(("c".to_string(), ("gamma_pt".to_string(), gamma_pt)));
+        query_set.insert(("c".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("idx_f".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("idx_t".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("idx_f".to_string(), ("gamma_pt".to_string(), gamma_pt)));
+        query_set.insert(("idx_t".to_string(), ("gamma_pt".to_string(), gamma_pt)));
+        query_set.insert(("idx_f".to_string(), ("omega_f_pt".to_string(), omega_f_pt)));
+        query_set.insert(("idx_t".to_string(), ("omega_t_pt".to_string(), omega_t_pt)));
+        query_set.insert(("s_f".to_string(), ("gamma_pt".to_string(), gamma_pt)));
+        query_set.insert(("s_t".to_string(), ("gamma_pt".to_string(), gamma_pt)));
+        query_set.insert(("s_f".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("s_t".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("b_f".to_string(), ("gamma_pt".to_string(), gamma_pt)));
+        query_set.insert(("b_t".to_string(), ("gamma_pt".to_string(), gamma_pt)));
+        query_set.insert(("b_f".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("b_t".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("f".to_string(), ("gamma_pt".to_string(), gamma_pt)));
+        query_set.insert(("t".to_string(), ("gamma_pt".to_string(), gamma_pt)));
+        query_set.insert(("u_f".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("u_t".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("T_f".to_string(), ("omega_f_pt".to_string(), omega_f_pt)));
+        query_set.insert(("T_t".to_string(), ("omega_t_pt".to_string(), omega_t_pt)));
+        query_set.insert(("u_f".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("u_t".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("T_f".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("T_t".to_string(), ("pt".to_string(), pt)));
 
         let pc_proof = PC::batch_open(
             committer_key,
@@ -738,6 +787,31 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         // we need B(gamma X) to compute Q_G(X)
         // send batch eval proof for A(z), B(gamma z), Q_G(z)
         // also send evaluations of A(z), B(gamma z), Q_G(z)
+        // lastly, we have to actually send all 26 evaluations
+        let c_eval_at_gamma_pt = c.evaluate(&gamma_pt);
+        let c_eval_at_pt = c.evaluate(&pt);
+        let idx_f_eval_at_pt = idx_f.evaluate(&pt);
+        let idx_t_eval_at_pt = idx_t.evaluate(&pt);
+        let idx_f_eval_at_gamma_pt = idx_f.evaluate(&gamma_pt);
+        let idx_t_eval_at_gamma_pt = idx_t.evaluate(&gamma_pt);
+        let idx_f_eval_at_omega_f_pt = idx_f.evaluate(&omega_f_pt);
+        let idx_t_eval_at_omega_t_pt = idx_t.evaluate(&omega_t_pt);
+        let s_f_eval_at_gamma_pt = s_f.evaluate(&gamma_pt);
+        let s_t_eval_at_gamma_pt = s_t.evaluate(&gamma_pt);
+        let s_f_eval_at_pt = s_f.evaluate(&pt);
+        let s_t_eval_at_pt = s_t.evaluate(&pt);
+        let b_f_eval_at_gamma_pt = b_f.evaluate(&gamma_pt);
+        let b_t_eval_at_gamma_pt = b_t.evaluate(&gamma_pt);
+        let b_f_eval_at_pt = b_f.evaluate(&pt);
+        let b_t_eval_at_pt = b_t.evaluate(&pt);
+        let f_eval_at_gamma_pt = f.evaluate(&gamma_pt);
+        let t_eval_at_gamma_pt = t.evaluate(&gamma_pt);
+        let u_f_eval_at_pt = u_f.evaluate(&pt);
+        let u_t_eval_at_pt = u_t.evaluate(&pt);
+        let T_f_eval_at_omega_f_pt = T_f.evaluate(&omega_f_pt);
+        let T_t_eval_at_omega_t_pt = T_t.evaluate(&omega_t_pt);
+        let T_f_eval_at_pt = T_f.evaluate(&pt);
+        let T_t_eval_at_pt = T_t.evaluate(&pt);
 
         return Ok(Proof {
             c_comm,
@@ -755,6 +829,30 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             quotient_H_f_comm,
             quotient_H_t_comm,
             pc_proof,
+            c_eval_at_gamma_pt,
+            c_eval_at_pt,
+            idx_f_eval_at_pt,
+            idx_t_eval_at_pt,
+            idx_f_eval_at_gamma_pt,
+            idx_t_eval_at_gamma_pt,
+            idx_f_eval_at_omega_f_pt,
+            idx_t_eval_at_omega_t_pt,
+            s_f_eval_at_gamma_pt,
+            s_t_eval_at_gamma_pt,
+            s_f_eval_at_pt,
+            s_t_eval_at_pt,
+            b_f_eval_at_gamma_pt,
+            b_t_eval_at_gamma_pt,
+            b_f_eval_at_pt,
+            b_t_eval_at_pt,
+            f_eval_at_gamma_pt,
+            t_eval_at_gamma_pt,
+            u_f_eval_at_pt,
+            u_t_eval_at_pt,
+            T_f_eval_at_omega_f_pt,
+            T_t_eval_at_omega_t_pt,
+            T_f_eval_at_pt,
+            T_t_eval_at_pt,
         });
     }
 
