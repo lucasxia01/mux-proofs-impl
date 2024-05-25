@@ -224,16 +224,10 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         let t_domain = Radix2EvaluationDomain::<F>::new(t_domain_size).unwrap();
         let coset_domain = Radix2EvaluationDomain::<F>::new(coset_domain_size).unwrap();
         let one_domain = Radix2EvaluationDomain::<F>::new(1).unwrap();
-        let f_generator = f_domain.group_gen;
-        let t_generator = t_domain.group_gen;
-        let coset_generator = coset_domain.group_gen;
         assert_eq!(f_domain_size % coset_domain_size, 0);
         assert_eq!(t_domain_size % coset_domain_size, 0);
         let f_domain_num_cosets = f_domain_size / coset_domain_size;
         let t_domain_num_cosets = t_domain_size / coset_domain_size;
-        // Set up the vanishing polynomials for the two domains
-        let t_vanishing: SparsePolynomial<F> = t_domain.vanishing_polynomial();
-        let f_vanishing: SparsePolynomial<F> = f_domain.vanishing_polynomial();
 
         // Step 1: compute count polynomial c(X) that encodes the counts the frequency of each table vector in f
         let f_vecs: Vec<Vec<F>> = (0..f_domain_num_cosets)
@@ -738,38 +732,12 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         let polys = [
             &f, &t, &c, &idx_f, &idx_t, &s_f, &s_t, &b_f, &b_t, &u_f, &u_t, &T_f, &T_t,
         ];
-        let mut query_set = QuerySet::new();
         // Get the verifier query challenge
         let pt = F::rand(&mut fs_rng);
         let gamma_pt = pt * coset_domain.group_gen;
         let omega_f_pt = pt * f_domain.group_gen;
         let omega_t_pt = pt * t_domain.group_gen;
-        query_set.insert(("c".to_string(), ("gamma_pt".to_string(), gamma_pt)));
-        query_set.insert(("c".to_string(), ("pt".to_string(), pt)));
-        query_set.insert(("idx_f".to_string(), ("pt".to_string(), pt)));
-        query_set.insert(("idx_t".to_string(), ("pt".to_string(), pt)));
-        query_set.insert(("idx_f".to_string(), ("gamma_pt".to_string(), gamma_pt)));
-        query_set.insert(("idx_t".to_string(), ("gamma_pt".to_string(), gamma_pt)));
-        query_set.insert(("idx_f".to_string(), ("omega_f_pt".to_string(), omega_f_pt)));
-        query_set.insert(("idx_t".to_string(), ("omega_t_pt".to_string(), omega_t_pt)));
-        query_set.insert(("s_f".to_string(), ("gamma_pt".to_string(), gamma_pt)));
-        query_set.insert(("s_t".to_string(), ("gamma_pt".to_string(), gamma_pt)));
-        query_set.insert(("s_f".to_string(), ("pt".to_string(), pt)));
-        query_set.insert(("s_t".to_string(), ("pt".to_string(), pt)));
-        query_set.insert(("b_f".to_string(), ("gamma_pt".to_string(), gamma_pt)));
-        query_set.insert(("b_t".to_string(), ("gamma_pt".to_string(), gamma_pt)));
-        query_set.insert(("b_f".to_string(), ("pt".to_string(), pt)));
-        query_set.insert(("b_t".to_string(), ("pt".to_string(), pt)));
-        query_set.insert(("f".to_string(), ("gamma_pt".to_string(), gamma_pt)));
-        query_set.insert(("t".to_string(), ("gamma_pt".to_string(), gamma_pt)));
-        query_set.insert(("u_f".to_string(), ("pt".to_string(), pt)));
-        query_set.insert(("u_t".to_string(), ("pt".to_string(), pt)));
-        query_set.insert(("T_f".to_string(), ("omega_f_pt".to_string(), omega_f_pt)));
-        query_set.insert(("T_t".to_string(), ("omega_t_pt".to_string(), omega_t_pt)));
-        query_set.insert(("u_f".to_string(), ("pt".to_string(), pt)));
-        query_set.insert(("u_t".to_string(), ("pt".to_string(), pt)));
-        query_set.insert(("T_f".to_string(), ("pt".to_string(), pt)));
-        query_set.insert(("T_t".to_string(), ("pt".to_string(), pt)));
+        let mut query_set = Self::get_query_set(pt, gamma_pt, omega_f_pt, omega_t_pt);
 
         let pc_proof = PC::batch_open(
             committer_key,
@@ -862,18 +830,138 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         f_comm: &LabeledCommitment<PC::Commitment>,
         t_comm: &LabeledCommitment<PC::Commitment>,
     ) -> Result<bool, Error<PC::Error>> {
+        // Fiat-shamir setup
+        // TODO: fix this initialization to include all public inputs
+        let mut fs_rng = FS::initialize(&to_bytes![&Self::PROTOCOL_NAME].unwrap());
+
+        // Set up
+        // TODO fix this when test is unlocked by Nirvan
+        let f_domain = Radix2EvaluationDomain::<F>::new(8).unwrap();
+        let t_domain = Radix2EvaluationDomain::<F>::new(2).unwrap();
+        let coset_domain = Radix2EvaluationDomain::<F>::new(1).unwrap();
+        let one_domain = Radix2EvaluationDomain::<F>::new(1).unwrap();
+
+        // Compute challenges alpha and beta
+        let alpha = F::rand(&mut fs_rng);
+        let beta = F::rand(&mut fs_rng);
+
+        // Get batching challenge
+        let opening_challenge = F::rand(&mut fs_rng);
+
+        // Get the verifier query challenge
+        let pt = F::rand(&mut fs_rng);
+        let gamma_pt = pt * coset_domain.group_gen;
+        let omega_f_pt = pt * f_domain.group_gen;
+        let omega_t_pt = pt * t_domain.group_gen;
+        let query_set = Self::get_query_set(pt, gamma_pt, omega_f_pt, omega_t_pt);
         // Derive some lagranges and vanishing polynomials
+
         // Do a bunch of zero checks
         // Batch verify everything with 2 pairings
-        // PC::batch_check(
-        //     vk,
-        //     commitments,
-        //     query_set,
-        //     evaluations,
-        //     proof,
-        //     opening_challenge,
-        //     rng,
-        // );
+        let commitments = vec![
+            f_comm,
+            t_comm,
+            &proof.c_comm,
+            &proof.idx_f_comm,
+            &proof.idx_t_comm,
+            &proof.s_f_comm,
+            &proof.s_t_comm,
+            &proof.b_f_comm,
+            &proof.b_t_comm,
+            &proof.u_f_comm,
+            &proof.u_t_comm,
+            &proof.T_f_comm,
+            &proof.T_t_comm,
+            &proof.quotient_V_comm,
+            &proof.quotient_H_f_comm,
+            &proof.quotient_H_t_comm,
+        ];
+        // generate the evaluations
+        let mut evaluations = ark_poly_commit::Evaluations::new();
+        evaluations.insert(("c".to_string(), gamma_pt), proof.c_eval_at_gamma_pt);
+        evaluations.insert(("c".to_string(), pt), proof.c_eval_at_pt);
+        evaluations.insert(("idx_f".to_string(), pt), proof.idx_f_eval_at_pt);
+        evaluations.insert(("idx_t".to_string(), pt), proof.idx_t_eval_at_pt);
+        evaluations.insert(
+            ("idx_f".to_string(), gamma_pt),
+            proof.idx_f_eval_at_gamma_pt,
+        );
+        evaluations.insert(
+            ("idx_t".to_string(), gamma_pt),
+            proof.idx_t_eval_at_gamma_pt,
+        );
+        evaluations.insert(
+            ("idx_f".to_string(), omega_f_pt),
+            proof.idx_f_eval_at_omega_f_pt,
+        );
+        evaluations.insert(
+            ("idx_t".to_string(), omega_t_pt),
+            proof.idx_t_eval_at_omega_t_pt,
+        );
+        evaluations.insert(("s_f".to_string(), gamma_pt), proof.s_f_eval_at_gamma_pt);
+        evaluations.insert(("s_t".to_string(), gamma_pt), proof.s_t_eval_at_gamma_pt);
+        evaluations.insert(("s_f".to_string(), pt), proof.s_f_eval_at_pt);
+        evaluations.insert(("s_t".to_string(), pt), proof.s_t_eval_at_pt);
+        evaluations.insert(("b_f".to_string(), gamma_pt), proof.b_f_eval_at_gamma_pt);
+        evaluations.insert(("b_t".to_string(), gamma_pt), proof.b_t_eval_at_gamma_pt);
+        evaluations.insert(("b_f".to_string(), pt), proof.b_f_eval_at_pt);
+        evaluations.insert(("b_t".to_string(), pt), proof.b_t_eval_at_pt);
+        evaluations.insert(("f".to_string(), gamma_pt), proof.f_eval_at_gamma_pt);
+        evaluations.insert(("t".to_string(), gamma_pt), proof.t_eval_at_gamma_pt);
+        evaluations.insert(("u_f".to_string(), pt), proof.u_f_eval_at_pt);
+        evaluations.insert(("u_t".to_string(), pt), proof.u_t_eval_at_pt);
+        evaluations.insert(
+            ("T_f".to_string(), omega_f_pt),
+            proof.T_f_eval_at_omega_f_pt,
+        );
+        evaluations.insert(
+            ("T_t".to_string(), omega_t_pt),
+            proof.T_t_eval_at_omega_t_pt,
+        );
+        evaluations.insert(("T_f".to_string(), pt), proof.T_f_eval_at_pt);
+        evaluations.insert(("T_t".to_string(), pt), proof.T_t_eval_at_pt);
+
+        let result = PC::batch_check(
+            verifier_key,
+            commitments,
+            &query_set,
+            &evaluations,
+            &proof.pc_proof,
+            opening_challenge,
+            &mut fs_rng,
+        )
+        .map_err(Error::from_pc_err);
         return Ok(true);
+    }
+
+    fn get_query_set(pt: F, gamma_pt: F, omega_f_pt: F, omega_t_pt: F) -> QuerySet<F> {
+        let mut query_set = QuerySet::new();
+        query_set.insert(("c".to_string(), ("gamma_pt".to_string(), gamma_pt)));
+        query_set.insert(("c".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("idx_f".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("idx_t".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("idx_f".to_string(), ("gamma_pt".to_string(), gamma_pt)));
+        query_set.insert(("idx_t".to_string(), ("gamma_pt".to_string(), gamma_pt)));
+        query_set.insert(("idx_f".to_string(), ("omega_f_pt".to_string(), omega_f_pt)));
+        query_set.insert(("idx_t".to_string(), ("omega_t_pt".to_string(), omega_t_pt)));
+        query_set.insert(("s_f".to_string(), ("gamma_pt".to_string(), gamma_pt)));
+        query_set.insert(("s_t".to_string(), ("gamma_pt".to_string(), gamma_pt)));
+        query_set.insert(("s_f".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("s_t".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("b_f".to_string(), ("gamma_pt".to_string(), gamma_pt)));
+        query_set.insert(("b_t".to_string(), ("gamma_pt".to_string(), gamma_pt)));
+        query_set.insert(("b_f".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("b_t".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("f".to_string(), ("gamma_pt".to_string(), gamma_pt)));
+        query_set.insert(("t".to_string(), ("gamma_pt".to_string(), gamma_pt)));
+        query_set.insert(("u_f".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("u_t".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("T_f".to_string(), ("omega_f_pt".to_string(), omega_f_pt)));
+        query_set.insert(("T_t".to_string(), ("omega_t_pt".to_string(), omega_t_pt)));
+        query_set.insert(("u_f".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("u_t".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("T_f".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("T_t".to_string(), ("pt".to_string(), pt)));
+        return query_set;
     }
 }
