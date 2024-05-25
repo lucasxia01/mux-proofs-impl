@@ -155,7 +155,7 @@ pub struct Proof<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>> {
     pc_proof: <PC as PolynomialCommitment<F, DensePolynomial<F>>>::BatchProof,
 }
 
-pub struct VectorLookup<
+pub struct CosetLookup<
     F: FftField,
     PC: PolynomialCommitment<F, DensePolynomial<F>>,
     FS: FiatShamirRng,
@@ -166,7 +166,7 @@ pub struct VectorLookup<
 }
 
 impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShamirRng>
-    VectorLookup<F, PC, FS>
+    CosetLookup<F, PC, FS>
 {
     pub const PROTOCOL_NAME: &'static [u8] = b"Vector_Lookup";
 
