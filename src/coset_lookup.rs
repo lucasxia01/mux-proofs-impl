@@ -119,7 +119,9 @@ pub struct Proof<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>> {
     u_t_comm: LabeledCommitment<PC::Commitment>,
     T_f_comm: LabeledCommitment<PC::Commitment>,
     T_t_comm: LabeledCommitment<PC::Commitment>,
-
+    quotient_V_comm: LabeledCommitment<PC::Commitment>,
+    quotient_H_f_comm: LabeledCommitment<PC::Commitment>,
+    quotient_H_t_comm: LabeledCommitment<PC::Commitment>,
     pc_proof: <PC as PolynomialCommitment<F, DensePolynomial<F>>>::BatchProof,
 }
 
@@ -533,11 +535,12 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             &DensePolynomial::from_coefficients_vec(vec![coset_domain.group_gen_inv, F::one()]);
         let V_zero_test_2 = (idx_f_rotated_gamma.sub(&idx_f.mul(beta))).mul(V_last_zero);
         let V_zero_test_3 = (idx_t_rotated_gamma.sub(&idx_t.mul(beta))).mul(V_last_zero);
-        let quotient_V = (V_zero_test_0
+        let (quotient_V, rem_V) = (V_zero_test_0
             + V_zero_test_1.mul(batching_challenge_powers[1])
             + V_zero_test_2.mul(batching_challenge_powers[2])
             + V_zero_test_3.mul(batching_challenge_powers[3]))
-        .divide_by_vanishing_poly(coset_domain);
+        .divide_by_vanishing_poly(coset_domain)
+        .unwrap();
 
         // Quotient poly over f domain, 7 zero tests associated with it
         let H_f_last_coset_vanishing: DensePolynomial<F> =
@@ -574,14 +577,15 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         let H_f_zero_test_6 = lagrange_0_H_f.mul(&T_f.sub(T_t.polynomial()));
         // Now batch together all the zero tests
 
-        let quotient_H_f = (H_f_zero_test_0
+        let (quotient_H_f, rem_H_f) = (H_f_zero_test_0
             + H_f_zero_test_1.mul(batching_challenge_powers[1])
             + H_f_zero_test_2.mul(batching_challenge_powers[2])
             + H_f_zero_test_3.mul(batching_challenge_powers[3])
             + H_f_zero_test_4.mul(batching_challenge_powers[4])
             + H_f_zero_test_5.mul(batching_challenge_powers[5])
             + H_f_zero_test_6.mul(batching_challenge_powers[6]))
-        .divide_by_vanishing_poly(f_domain);
+        .divide_by_vanishing_poly(f_domain)
+        .unwrap();
 
         // Quotient poly over t domain, 7 zero tests associated with it
         let H_t_zero_test_0 = c_rotated_gamma.sub(c.polynomial());
@@ -615,20 +619,40 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         let lagrange_last_H_t: DensePolynomial<F> =
             ith_lagrange_poly(t_domain_size - 1, t_domain).into();
         let H_t_zero_test_6 = lagrange_last_H_t.mul(&T_t.sub(u_t.polynomial()));
-        let quotient_H_t = (H_t_zero_test_0
+        let (quotient_H_t, rem_H_t) = (H_t_zero_test_0
             + H_t_zero_test_1.mul(batching_challenge_powers[1])
             + H_t_zero_test_2.mul(batching_challenge_powers[2])
             + H_t_zero_test_3.mul(batching_challenge_powers[3])
             + H_t_zero_test_4.mul(batching_challenge_powers[4])
             + H_t_zero_test_5.mul(batching_challenge_powers[5])
             + H_t_zero_test_6.mul(batching_challenge_powers[6]))
-        .divide_by_vanishing_poly(t_domain);
+        .divide_by_vanishing_poly(t_domain)
+        .unwrap();
 
-        // let quotient_vec = vec![quotient_V, quotient_H_f, quotient_H_t];
-        // let (quotient_comms, quotient_comm_rands) =
-        //     PC::commit(committer_key, quotient_vec, None).unwrap();
+        let quotient_V_labeled =
+            LabeledPolynomial::new("quotient_V".to_string(), quotient_V, None, None);
+        let quotient_H_f_labeled =
+            LabeledPolynomial::new("quotient_H_f".to_string(), quotient_H_f, None, None);
+        let quotient_H_t_labeled =
+            LabeledPolynomial::new("quotient_H_t".to_string(), quotient_H_t, None, None);
+        let (quotient_comms, quotient_comm_rands) = PC::commit(
+            committer_key,
+            vec![
+                &quotient_V_labeled,
+                &quotient_H_f_labeled,
+                &quotient_H_t_labeled,
+            ],
+            None,
+        )
+        .unwrap();
+        let quotient_V_comm = quotient_comms[0].clone();
+        let quotient_H_f_comm = quotient_comms[1].clone();
+        let quotient_H_t_comm = quotient_comms[2].clone();
+        let quotient_V_comm_rand = quotient_comm_rands[0].clone();
+        let quotient_H_f_comm_rand = quotient_comm_rands[1].clone();
+        let quotient_H_t_comm_rand = quotient_comm_rands[2].clone();
+
         let opening_challenge = F::rand(&mut fs_rng);
-        let query_set = QuerySet::new();
         let comms = vec![
             &c_comm,
             &idx_f_comm,
@@ -641,6 +665,9 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             &u_t_comm,
             &T_f_comm,
             &T_t_comm,
+            &quotient_V_comm,
+            &quotient_H_f_comm,
+            &quotient_H_t_comm,
         ];
         let comm_rands = vec![
             &c_comm_rand,
@@ -654,10 +681,15 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             &u_t_comm_rand,
             &T_f_comm_rand,
             &T_t_comm_rand,
+            &quotient_V_comm_rand,
+            &quotient_H_f_comm_rand,
+            &quotient_H_t_comm_rand,
         ];
         let polys = [
             &c, &idx_f, &idx_t, &s_f, &s_t, &b_f, &b_t, &u_f, &u_t, &T_f, &T_t,
         ];
+        let query_set = QuerySet::new();
+        // query_set.insert(("c".to_string(), (, F::zero())));
         let pc_proof = PC::batch_open(
             committer_key,
             polys,             // all the polys, including the quotient polynomials (no rotated)
@@ -687,6 +719,9 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             u_t_comm,
             T_f_comm,
             T_t_comm,
+            quotient_V_comm,
+            quotient_H_f_comm,
+            quotient_H_t_comm,
             pc_proof,
         });
     }
