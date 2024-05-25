@@ -1,6 +1,8 @@
 use ark_ff::Field;
 use ark_std::rand::RngCore;
 
+use std::fmt::Debug;
+
 pub mod error;
 pub mod rng;
 
@@ -15,7 +17,7 @@ pub mod naive;
 pub mod test;
 
 pub trait VectorLookup<F: Field> {
-    type Error;
+    type Error: Debug;
     type VectorCommitment: Clone;
     type VectorRepr: Clone;
     type UniversalSRS: Clone;
@@ -37,6 +39,18 @@ pub trait VectorLookup<F: Field> {
         lookup_size: usize,
         table_size: usize,
     ) -> Result<(Self::ProverKey, Self::VerifierKey), Self::Error>;
+
+    /// Given fields values and prover key, generate vector commitment and representation for lookup
+    fn commit_lookup(
+        pk: &Self::ProverKey,
+        f_vals: Vec<F>,
+    ) -> Result<(Self::VectorCommitment, Self::VectorRepr), Self::Error>;
+
+    /// Given fields values and prover key, generate vector commitment and representation for table
+    fn commit_table(
+        pk: &Self::ProverKey,
+        t_vals: Vec<F>,
+    ) -> Result<(Self::VectorCommitment, Self::VectorRepr), Self::Error>;
 
     /// Perform vector lookup and produce proof
     fn prove(
