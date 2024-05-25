@@ -32,6 +32,26 @@ pub fn compute_terms(numerator: Option<&[Fr]>, denominator: &[Fr], alpha: Fr) ->
         None => denoms,
     }
 }
+pub fn compute_statement_polys(
+    fs: &[Fr],
+    ts: &[Fr],
+    m: usize,
+    V: Radix2EvaluationDomain<Fr>,
+    H: Radix2EvaluationDomain<Fr>,
+) -> (Vec<DensePolynomial<Fr>>, Vec<DensePolynomial<Fr>>) {
+    let mods = (0..m).cycle();
+    let fs = mods.clone().zip(fs.iter().map(|e| *e)).into_group_map();
+    let ts = mods.zip(ts.iter().map(|e| *e)).into_group_map();
+    let mut f_polys = vec![];
+    let mut t_polys = vec![];
+    for i in 0..m {
+        let fi = Evaluations::from_vec_and_domain(fs[&i].clone(), V).interpolate();
+        let ti = Evaluations::from_vec_and_domain(ts[&i].clone(), H).interpolate();
+        f_polys.push(fi);
+        t_polys.push(ti);
+    }
+    (f_polys, t_polys)
+}
 
 pub fn compute_round_1(fs: &[Fr], ts: &[Fr], beta: Fr, m: usize) -> (Vec<Fr>, Vec<Fr>, Vec<Fr>) {
     let n = fs.len() / m;
