@@ -15,12 +15,10 @@ use ark_poly_commit::{
 use ark_std::rand::RngCore;
 use ark_std::{end_timer, ops::*, start_timer};
 
-pub mod rng;
-use rng::FiatShamirRng;
-pub use rng::SimpleHashFiatShamirRng;
+use crate::rng::FiatShamirRng;
+pub use crate::rng::SimpleHashFiatShamirRng;
 
-mod error;
-pub use error::*;
+pub use crate::error::*;
 
 // we need pick parameters
 // field, group, FS, evlauation domain

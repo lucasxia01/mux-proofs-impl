@@ -10,7 +10,7 @@ pub use mux_proofs_impl::rng::SimpleHashFiatShamirRng;
 #[cfg(test)]
 mod tests {
     use ark_poly_commit::{LabeledPolynomial, PolynomialCommitment};
-    use mux_proofs_impl::{commit_to_evals, poly_from_evals, CosetLookup};
+    use mux_proofs_impl::coset_lookup::{commit_to_evals, poly_from_evals, CosetLookup};
 
     use super::*;
     #[test]
