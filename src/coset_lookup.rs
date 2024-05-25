@@ -44,7 +44,7 @@ pub fn get_mult_subgroup_vanishing_poly<F: FftField>(n: usize) -> SparsePolynomi
     domain.vanishing_polynomial()
 }
 
-pub fn compute_ith_lagrange_poly<F: FftField>(
+pub fn ith_lagrange_poly<F: FftField>(
     i: usize,
     domain: Radix2EvaluationDomain<F>,
 ) -> SparsePolynomial<F> {
@@ -57,7 +57,7 @@ pub fn compute_ith_lagrange_poly<F: FftField>(
     return SparsePolynomial::from(numerator.div(&denom).mul(coeff_i));
 }
 
-pub fn compute_ith_lagrange_poly_eval<F: FftField>(
+pub fn ith_lagrange_poly_eval<F: FftField>(
     i: usize,
     domain: Radix2EvaluationDomain<F>,
     evaluation_point: F,
@@ -105,38 +105,6 @@ pub fn multi_commit_to_evals<F: FftField, PC: PolynomialCommitment<F, DensePolyn
     comms.0 // TODO: figure out what the second tuple element, the randomness is
 }
 
-pub fn construct_zero_tests<F: FftField>(
-    opening_challenge: F,
-    t_vanishing: SparsePolynomial<F>,
-    f_vanishing: SparsePolynomial<F>,
-) -> Vec<LinearCombination<F>> {
-    // Step 1.b Zero test
-    let zero_test_c = LinearCombination::new(
-        "zero_test_c".to_string(),
-        vec![(F::one(), "c".to_string()), (-F::one(), "c".to_string())],
-    );
-
-    // Step 3.b Zero tests
-
-    // Step 3.c Zero tests
-
-    // Step 3.d Zero tests
-
-    // Step 4.b Zero tests
-
-    // Step 5.b Zero tests
-
-    // Step 6.b Zero tests
-
-    // Step 7.b Zero tests
-
-    // Step 7.c Zero tests
-
-    // Step 7.d Zero test
-
-    return vec![zero_test_c];
-}
-
 pub type UniversalSRS<F, PC> = <PC as PolynomialCommitment<F, DensePolynomial<F>>>::UniversalParams;
 
 pub struct Proof<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>> {
@@ -151,6 +119,7 @@ pub struct Proof<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>> {
     u_t_comm: LabeledCommitment<PC::Commitment>,
     T_f_comm: LabeledCommitment<PC::Commitment>,
     T_t_comm: LabeledCommitment<PC::Commitment>,
+
     pc_proof: <PC as PolynomialCommitment<F, DensePolynomial<F>>>::BatchProof,
 }
 
@@ -290,7 +259,6 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             None,
             None,
         );
-        // Get a quotient poly q(X) = (c(X) - c(\gammaX))/t_vanishing
 
         let (c_comms, c_comm_rands) =
             PC::commit(committer_key, vec![&c], None).map_err(Error::from_pc_err)?;
@@ -521,6 +489,14 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         }
         let T_f =
             LabeledPolynomial::new("T_f".to_string(), poly_from_evals(&T_f_evals), None, None);
+        T_f_evals.rotate_right(1);
+        let T_f_rotated_omega = LabeledPolynomial::new(
+            "T_f_rotated_omega".to_string(),
+            poly_from_evals(&T_f_evals),
+            None,
+            None,
+        );
+
         let mut T_t_evals = vec![F::zero(); t_domain_size];
         T_t_evals[t_domain_size - 1] = c_evals[t_domain_size - 1] * u_t_evals[t_domain_size - 1];
         for i in (0..t_domain_size - 1).rev() {
@@ -528,14 +504,130 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         }
         let T_t =
             LabeledPolynomial::new("T_t".to_string(), poly_from_evals(&T_t_evals), None, None);
+        T_t_evals.rotate_right(1);
+        let T_t_rotated_omega = LabeledPolynomial::new(
+            "T_t_rotated_omega".to_string(),
+            poly_from_evals(&T_t_evals),
+            None,
+            None,
+        );
         let (T_comms, T_comm_rands) = PC::commit(committer_key, vec![&T_f, &T_t], None).unwrap();
         let T_f_comm = T_comms[0].clone();
         let T_f_comm_rand = T_comm_rands[0].clone();
         let T_t_comm = T_comms[1].clone();
         let T_t_comm_rand = T_comm_rands[1].clone();
 
-        // Construct all the zero tests
-        let opening_challenge = F::rand(&mut fs_rng); // TODO: do this or u128::rand?
+        let MAX_ZERO_TEST_LENGTH = 7;
+        let batching_challenge = F::rand(&mut fs_rng);
+        let mut batching_challenge_powers = vec![F::one(); MAX_ZERO_TEST_LENGTH];
+        for i in 1..MAX_ZERO_TEST_LENGTH {
+            batching_challenge_powers[i] = batching_challenge_powers[i - 1] * batching_challenge;
+        }
+        // Construct all the quotient polynomials
+        // Quotient poly over coset domain, 4 zero tests associated with it
+        let lagrange_0_V: DensePolynomial<F> = ith_lagrange_poly(0, coset_domain).into();
+        let one_poly = &DensePolynomial::from_coefficients_vec(vec![F::one()]);
+        let V_zero_test_0 = (idx_f.sub(one_poly)).mul(&lagrange_0_V);
+        let V_zero_test_1 = (idx_t.sub(one_poly)).mul(&lagrange_0_V);
+        let V_last_zero =
+            &DensePolynomial::from_coefficients_vec(vec![coset_domain.group_gen_inv, F::one()]);
+        let V_zero_test_2 = (idx_f_rotated_gamma.sub(&idx_f.mul(beta))).mul(V_last_zero);
+        let V_zero_test_3 = (idx_t_rotated_gamma.sub(&idx_t.mul(beta))).mul(V_last_zero);
+        let quotient_V = (V_zero_test_0
+            + V_zero_test_1.mul(batching_challenge_powers[1])
+            + V_zero_test_2.mul(batching_challenge_powers[2])
+            + V_zero_test_3.mul(batching_challenge_powers[3]))
+        .divide_by_vanishing_poly(coset_domain);
+
+        // Quotient poly over f domain, 7 zero tests associated with it
+        let H_f_last_coset_vanishing: DensePolynomial<F> =
+            SparsePolynomial::from_coefficients_vec(vec![
+                (
+                    0,
+                    F::from(
+                        f_domain
+                            .group_gen
+                            .pow(&[(f_domain_size - coset_domain_size) as u64]),
+                    ),
+                ),
+                (coset_domain_size, F::one()),
+            ])
+            .into();
+        let H_f_zero_test_0 =
+            (idx_f.sub(idx_f_rotated_omega.polynomial())).mul(&H_f_last_coset_vanishing);
+        let H_f_zero_test_1 = s_f_rotated_gamma.sub(s_f.polynomial());
+        let H_f_zero_test_2 = b_f_rotated_gamma
+            .sub(b_f.polynomial())
+            .sub(&idx_f_rotated_gamma.mul(f_rotated_gamma.polynomial()))
+            .add(s_f.mul(coset_domain.size_inv));
+        let alpha_poly = &DensePolynomial::from_coefficients_vec(vec![alpha]);
+        let H_f_zero_test_3 = u_f.mul(&alpha_poly.sub(s_f.polynomial()));
+        let H_f_last_zero =
+            &DensePolynomial::from_coefficients_vec(vec![f_domain.group_gen_inv, F::one()]);
+        let H_f_zero_test_4 = (T_f_rotated_omega.polynomial()
+            + &(u_f.polynomial()).sub(T_f.polynomial()))
+            .mul(H_f_last_zero);
+        let lagrange_last_H_f: DensePolynomial<F> =
+            ith_lagrange_poly(f_domain_size - 1, f_domain).into();
+        let H_f_zero_test_5 = lagrange_last_H_f.mul(&T_f.sub(u_f.polynomial()));
+        let lagrange_0_H_f: DensePolynomial<F> = ith_lagrange_poly(0, f_domain).into();
+        let H_f_zero_test_6 = lagrange_0_H_f.mul(&T_f.sub(T_t.polynomial()));
+        // Now batch together all the zero tests
+
+        let quotient_H_f = (H_f_zero_test_0
+            + H_f_zero_test_1.mul(batching_challenge_powers[1])
+            + H_f_zero_test_2.mul(batching_challenge_powers[2])
+            + H_f_zero_test_3.mul(batching_challenge_powers[3])
+            + H_f_zero_test_4.mul(batching_challenge_powers[4])
+            + H_f_zero_test_5.mul(batching_challenge_powers[5])
+            + H_f_zero_test_6.mul(batching_challenge_powers[6]))
+        .divide_by_vanishing_poly(f_domain);
+
+        // Quotient poly over t domain, 7 zero tests associated with it
+        let H_t_zero_test_0 = c_rotated_gamma.sub(c.polynomial());
+        let H_t_last_coset_vanishing: DensePolynomial<F> =
+            SparsePolynomial::from_coefficients_vec(vec![
+                (
+                    0,
+                    F::from(
+                        t_domain
+                            .group_gen
+                            .pow(&[(t_domain_size - coset_domain_size) as u64]),
+                    ),
+                ),
+                (coset_domain_size, F::one()),
+            ])
+            .into();
+        let H_t_zero_test_1 =
+            (idx_t.sub(idx_t_rotated_omega.polynomial())).mul(&H_t_last_coset_vanishing);
+        let H_t_zero_test_2 = s_t_rotated_gamma.sub(s_t.polynomial());
+        let H_t_zero_test_3 = b_t_rotated_gamma
+            .sub(b_t.polynomial())
+            .sub(&idx_t_rotated_gamma.mul(t_rotated_gamma.polynomial()))
+            .add(s_t.mul(coset_domain.size_inv));
+        let alpha_poly = &DensePolynomial::from_coefficients_vec(vec![alpha]);
+        let H_t_zero_test_4 = u_t.mul(&alpha_poly.sub(s_t.polynomial()));
+        let H_t_last_zero =
+            &DensePolynomial::from_coefficients_vec(vec![t_domain.group_gen_inv, F::one()]);
+        let H_t_zero_test_5 = (T_t_rotated_omega.polynomial()
+            + &(u_t.polynomial()).sub(T_t.polynomial()))
+            .mul(H_t_last_zero);
+        let lagrange_last_H_t: DensePolynomial<F> =
+            ith_lagrange_poly(t_domain_size - 1, t_domain).into();
+        let H_t_zero_test_6 = lagrange_last_H_t.mul(&T_t.sub(u_t.polynomial()));
+        let quotient_H_t = (H_t_zero_test_0
+            + H_t_zero_test_1.mul(batching_challenge_powers[1])
+            + H_t_zero_test_2.mul(batching_challenge_powers[2])
+            + H_t_zero_test_3.mul(batching_challenge_powers[3])
+            + H_t_zero_test_4.mul(batching_challenge_powers[4])
+            + H_t_zero_test_5.mul(batching_challenge_powers[5])
+            + H_t_zero_test_6.mul(batching_challenge_powers[6]))
+        .divide_by_vanishing_poly(t_domain);
+
+        // let quotient_vec = vec![quotient_V, quotient_H_f, quotient_H_t];
+        // let (quotient_comms, quotient_comm_rands) =
+        //     PC::commit(committer_key, quotient_vec, None).unwrap();
+        let opening_challenge = F::rand(&mut fs_rng);
         let query_set = QuerySet::new();
         let comms = vec![
             &c_comm,
