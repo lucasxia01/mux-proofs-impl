@@ -1,0 +1,46 @@
+Define V = <omega> such that |V| = n and H=<gamma> such that |H| = d to be subgroups. 
+
+Given vectors f and t where |f| = m*n and |t| = m*d.
+Denote the elements of f:= (f_{1,1}, f_{1,2}, ..., f_{1, m}, f_{2,1}, f_{2,2}, ..., f_{2, m}, ... f_{n,1}, f_{n,2}, ..., f_{n, m})
+Denote the elements of t:= (t_{1,1}, t_{1,2}, ..., t_{1, m}, t_{2,1}, t_{2,2}, ..., t_{2, m}, ... t_{d,1}, t_{d,2}, ..., t_{d, m})
+
+We define m subvectors of size n:
+for all i in [m], f_i := (f_{i, 1}, ..., f_{i, n}).
+We will work with polynomials f_i, whose evaluations over V agree with these subvectors.
+
+Similarly, we define m subvectors of size d:
+for all i in [m], t_i := (f_{i, 1}, ..., f_{i, d}).
+We will work with polynomials t_i, whose evaluations over H agree with these subvectors.
+
+P({f_1, ..., f_m}, {t_1, ..., t_m}) <-> V({f_1, ..., f_m}, {t_1, ..., t_m}):
+
+Round 1
+Prover
+    - computes c(X) which encodes the counts as evaluations over H.
+    - Sends c(X) to Verifier.
+Verifier
+    - samples random challenges alpha, beta
+    - computes oracles f := sum_{i=1 to m} beta^{i-1}f_i, t := sum_{i=1 to m} beta^{i-1}t_i.
+    - Sends alpha, beta to Prover.
+
+Round 2
+Prover
+    - computes f and t identically to Verifier using challenge beta.
+    - computes sum s = sum_{v in V} 1/(alpha + f(v)).
+    - computes polynomial f_hab such that f_hab(X)*(alpha + f(X)) - 1 = 0 over V.
+    - computes polynomial t_hab such that t_hab(X)*(alpha + t(X)) - c(X) = 0 over H.
+    - computes polynomial S_f(X) such that S_f(X) + f_hab(X) - S_f(omega*X) - s/n = 0 over V.
+    - computes polynomial S_t(X) such that S_t(X) + t_hab(X) - S_t(gamma*X) - s/d = 0 over H.
+    - Sends f_hab, t_hab, S_f, S_t, s to Verifier.
+Verifier
+    - samples random challenge zeta
+    - Sends challenge zeta to prover.
+
+Round 3
+Prover
+    - computes q_V = [(f_hab(X)*(alpha + f(X)) - 1)    + zeta * (S_f(X) + f_hab(X) - S_f(omega*X) - s/n)] / z_V(X)
+    - computes q_H = [(t_hab(X)*(alpha + t(X)) - c(X)) + zeta * (S_t(X) + t_hab(X) - S_t(gamma*X) - s/d)] / z_H(X)
+    - Sends q_V, q_H to verifier
+Verifier
+    - Samples random evaluation challenge z.
+    - above identities to check
