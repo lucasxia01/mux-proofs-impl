@@ -15,17 +15,21 @@ We will work with polynomials t_i, whose evaluations over H agree with these sub
 P({f_1, ..., f_m}, {t_1, ..., t_m}) <-> V({f_1, ..., f_m}, {t_1, ..., t_m}):
 
 Round 1
-Prover
-    - computes c(X) which encodes the counts as evaluations over H.
-    - Sends c(X) to Verifier.
 Verifier
-    - samples random challenges alpha, beta
+    - samples random challenges beta
     - computes oracles f := sum_{i=1 to m} beta^{i-1}f_i, t := sum_{i=1 to m} beta^{i-1}t_i.
-    - Sends alpha, beta to Prover.
+    - Sends beta to Prover.
 
 Round 2
 Prover
     - computes f and t identically to Verifier using challenge beta.
+    - computes c(X) which encodes the counts as evaluations over H.
+    - Sends c(X) to Verifier.
+Verifier
+    - Sends alpha to Prover.
+
+Round 3
+Prover
     - computes sum s = sum_{v in V} 1/(alpha + f(v)).
     - computes polynomial f_hab such that f_hab(X)*(alpha + f(X)) - 1 = 0 over V.
     - computes polynomial t_hab such that t_hab(X)*(alpha + t(X)) - c(X) = 0 over H.
@@ -36,7 +40,7 @@ Verifier
     - samples random challenge zeta
     - Sends challenge zeta to prover.
 
-Round 3
+Round 4
 Prover
     - computes q_V = [(f_hab(X)*(alpha + f(X)) - 1)    + zeta * (S_f(X) + f_hab(X) - S_f(omega*X) - s/n)] / z_V(X)
     - computes q_H = [(t_hab(X)*(alpha + t(X)) - c(X)) + zeta * (S_t(X) + t_hab(X) - S_t(gamma*X) - s/d)] / z_H(X)
