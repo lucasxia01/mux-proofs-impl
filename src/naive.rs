@@ -222,7 +222,7 @@ where
 
 #[derive(Clone)]
 pub struct NaivePK<F: FftField, P: Clone> {
-    lookup_size: usize,
+    vector_size: usize,
     V: Radix2EvaluationDomain<F>,
     H: Radix2EvaluationDomain<F>,
     pc_pk: P,
@@ -230,7 +230,7 @@ pub struct NaivePK<F: FftField, P: Clone> {
 
 #[derive(Clone)]
 pub struct NaiveVK<F: FftField, V: Clone> {
-    lookup_size: usize,
+    vector_size: usize,
     V: Radix2EvaluationDomain<F>,
     H: Radix2EvaluationDomain<F>,
     pc_vk: V,
@@ -284,23 +284,19 @@ where
         lookup_size: usize,
         table_size: usize,
     ) -> Result<(Self::ProverKey, Self::VerifierKey), Self::Error> {
-        let (pk, vk) = PC::trim(
-            srs,
-            *[vector_size, lookup_size, table_size].iter().max().unwrap(),
-            1,
-            None,
-        )?;
+        let trim_size = std::cmp::max(lookup_size, table_size) * vector_size;
+        let (pk, vk) = PC::trim(srs, trim_size, 1, None)?;
         Ok((
             NaivePK {
-                lookup_size,
-                V: Radix2EvaluationDomain::<F>::new(vector_size / lookup_size).unwrap(),
-                H: Radix2EvaluationDomain::<F>::new(table_size / lookup_size).unwrap(),
+                vector_size,
+                V: Radix2EvaluationDomain::<F>::new(lookup_size).unwrap(),
+                H: Radix2EvaluationDomain::<F>::new(table_size).unwrap(),
                 pc_pk: pk,
             },
             NaiveVK {
-                lookup_size,
-                V: Radix2EvaluationDomain::<F>::new(vector_size / lookup_size).unwrap(),
-                H: Radix2EvaluationDomain::<F>::new(table_size / lookup_size).unwrap(),
+                vector_size,
+                V: Radix2EvaluationDomain::<F>::new(lookup_size).unwrap(),
+                H: Radix2EvaluationDomain::<F>::new(table_size).unwrap(),
                 pc_vk: vk,
             },
         ))
@@ -310,7 +306,7 @@ where
         pk: &Self::ProverKey,
         f_vals: Vec<F>,
     ) -> Result<(Self::VectorCommitment, Self::VectorRepr), Self::Error> {
-        let fs_polys = compute_statement_polys(&f_vals, pk.lookup_size, pk.V.clone());
+        let fs_polys = compute_statement_polys(&f_vals, pk.vector_size, pk.V.clone());
         let labeledpolys = fs_polys
             .iter()
             .enumerate()
@@ -324,7 +320,7 @@ where
         pk: &Self::ProverKey,
         t_vals: Vec<F>,
     ) -> Result<(Self::VectorCommitment, Self::VectorRepr), Self::Error> {
-        let ts_polys = compute_statement_polys(&t_vals, pk.lookup_size, pk.H.clone());
+        let ts_polys = compute_statement_polys(&t_vals, pk.vector_size, pk.H.clone());
         let labeledpolys = ts_polys
             .iter()
             .enumerate()
@@ -345,7 +341,7 @@ where
     ) -> Result<Self::Proof, Self::Error> {
         let mut fs_rng = FS::initialize(b"naiveLC");
         let beta = F::rand(&mut fs_rng);
-        let (f_vec, t_vec, c_vec) = compute_round_1(&f_vals[..], &t_vals[..], beta, pk.lookup_size);
+        let (f_vec, t_vec, c_vec) = compute_round_1(&f_vals[..], &t_vals[..], beta, pk.vector_size);
 
         let (f, t, c) = compute_round_2_polys(&f_vec, &t_vec, &c_vec, pk.V.clone(), pk.H.clone());
         let f_labeled = LabeledPolynomial::new("f".to_string(), f.clone(), None, None);
@@ -443,7 +439,7 @@ where
         let mut fs_rng = FS::initialize(b"naiveLC");
         let beta = F::rand(&mut fs_rng);
 
-        let m = vk.lookup_size;
+        let m = vk.vector_size;
         let beta_pows = std::iter::successors(Some(F::one()), |n| Some(*n * beta))
             .take(m)
             .collect::<Vec<F>>();
@@ -598,8 +594,11 @@ mod tests {
             Fr::from(7),
             Fr::from(8),
         ];
+        let vector_size = 4;
+        let lookup_size = f_evals.len() / vector_size;
+        let table_size = t_evals.len() / vector_size;
         let srs = NaiveInst::universal_setup(16, &mut ark_std::test_rng()).unwrap();
-        let (pk, vk) = NaiveInst::index(&srs, f_evals.len(), 4, t_evals.len()).unwrap();
+        let (pk, vk) = NaiveInst::index(&srs, vector_size, lookup_size, table_size).unwrap();
         let (f_comm, _) = NaiveInst::commit_lookup(&pk, f_evals.clone()).unwrap();
         let (t_comm, _) = NaiveInst::commit_table(&pk, t_evals.clone()).unwrap();
         let proof = NaiveInst::prove(&pk, &f_comm, &t_comm, f_evals, t_evals, (), ()).unwrap();
