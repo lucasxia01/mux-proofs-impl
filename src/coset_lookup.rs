@@ -374,22 +374,15 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         // Step 4: Compute summation polynomial S_b(X).
         // Step 4.a: Compute S_b(X) for b = {f, t}.
         let mut s_f_evals = vec![F::zero(); f_domain_size];
-        let mut s_t_evals = vec![F::zero(); f_domain_size];
         for i in 0..f_domain_num_cosets {
             let mut s_f_sum = F::zero();
             for j in 0..coset_domain_size {
                 s_f_sum += f_evals[j * f_domain_num_cosets + i] * beta_powers[j];
             }
-            let mut s_t_sum = F::zero();
-            for j in 0..coset_domain_size {
-                s_t_sum += f_evals[j * t_domain_num_cosets + i] * beta_powers[j];
-            }
             for j in 0..coset_domain_size {
                 s_f_evals[j * f_domain_num_cosets + i] = s_f_sum;
-                s_t_evals[j * t_domain_num_cosets + i] = s_t_sum;
             }
         }
-
         let s_f =
             LabeledPolynomial::new("s_f".to_string(), poly_from_evals(&s_f_evals), None, None);
         s_f_evals.rotate_right(f_domain_num_cosets);
@@ -400,6 +393,16 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             None,
         );
 
+        let mut s_t_evals = vec![F::zero(); t_domain_size];
+        for i in 0..t_domain_num_cosets {
+            let mut s_t_sum = F::zero();
+            for j in 0..coset_domain_size {
+                s_t_sum += t_evals[j * t_domain_num_cosets + i] * beta_powers[j];
+            }
+            for j in 0..coset_domain_size {
+                s_t_evals[j * t_domain_num_cosets + i] = s_t_sum;
+            }
+        }
         let s_t =
             LabeledPolynomial::new("s_t".to_string(), poly_from_evals(&s_t_evals), None, None);
         s_t_evals.rotate_right(t_domain_num_cosets);
