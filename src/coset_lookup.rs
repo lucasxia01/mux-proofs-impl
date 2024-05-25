@@ -49,7 +49,7 @@ pub fn compute_ith_lagrange_poly<F: FftField>(
     domain: Radix2EvaluationDomain<F>,
 ) -> SparsePolynomial<F> {
     let omega_to_i = domain.group_gen.pow(&[i as u64]);
-    let coeff_i = omega_to_i / F::from(domain.size);
+    let coeff_i = omega_to_i * domain.size_inv;
     // denom is the polynomial X - omega_to_i
     let denom: DensePolynomial<F> =
         SparsePolynomial::from_coefficients_vec(vec![(0, -omega_to_i), (1, F::one())]).into();
@@ -63,7 +63,8 @@ pub fn compute_ith_lagrange_poly_eval<F: FftField>(
     evaluation_point: F,
 ) -> F {
     let omega_to_i = domain.group_gen.pow(&[i as u64]);
-    return omega_to_i / F::from(domain.size)
+    return omega_to_i
+        * domain.size_inv
         * domain.vanishing_polynomial().evaluate(&evaluation_point)
         / (evaluation_point - omega_to_i);
 }
@@ -424,7 +425,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         let mut b_f_evals = vec![F::zero(); f_domain_size];
         for i in 0..f_domain_num_cosets {
             let mut b_f_sum = F::zero();
-            let coset_sum_piece = s_f_evals[i] / F::from(coset_domain_size as u64); // the sum over this coset divided by the coset size, TODO: don't do this from
+            let coset_sum_piece = s_f_evals[i] * coset_domain.size_inv; // the sum over this coset divided by the coset size, TODO: don't do this from
             for j in 0..coset_domain_size {
                 b_f_sum += f_evals[j * f_domain_num_cosets + i] * beta_powers[j] - coset_sum_piece;
                 b_f_evals[j * f_domain_num_cosets + i] = b_f_sum;
@@ -448,11 +449,10 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             None,
         );
 
-        // Now
         let mut b_t_evals = vec![F::zero(); t_domain_size];
         for i in 0..t_domain_num_cosets {
             let mut b_t_sum = F::zero();
-            let coset_sum_piece = s_t_evals[i] / F::from(coset_domain_size as u64); // the sum over this coset divided by the coset size
+            let coset_sum_piece = s_t_evals[i] * coset_domain.size_inv; // the sum over this coset divided by the coset size
             for j in 0..coset_domain_size {
                 b_t_sum += t_evals[j * t_domain_num_cosets + i] * beta_powers[j] - coset_sum_piece;
                 b_t_evals[j * t_domain_num_cosets + i] = b_t_sum;
@@ -484,25 +484,23 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
 
         // Step 6: Compute inverse polynomial U_b(X)
         // Step 6.a: Compute U_b(X) for b = {f, t}.
-        // TODO: batch invert
-        // batch_inversion()
+        let mut u_f_denoms: Vec<F> = s_f_evals.iter().map(|&x| alpha - x).collect();
+        batch_inversion(&mut u_f_denoms);
         let mut u_f_evals = vec![F::zero(); f_domain_size];
         for i in 0..f_domain_num_cosets {
-            let u_f_val = (alpha - s_f_evals[i]).inverse().unwrap();
-            // Set u_f_evals, TODO: do this more idiomatically?
             for j in 0..coset_domain_size {
-                u_f_evals[j * f_domain_num_cosets + i] = u_f_val;
+                u_f_evals[j * f_domain_num_cosets + i] = u_f_denoms[i];
             }
         }
         let u_f =
             LabeledPolynomial::new("u_f".to_string(), poly_from_evals(&u_f_evals), None, None);
 
+        let mut u_t_denoms: Vec<F> = s_t_evals.iter().map(|&x| alpha - x).collect();
+        batch_inversion(&mut u_t_denoms);
         let mut u_t_evals = vec![F::zero(); t_domain_size];
         for i in 0..t_domain_num_cosets {
-            let u_t_val = (alpha - s_t_evals[i]).inverse().unwrap();
-            // Set u_t_evals, TODO: do this more idiomatically?
             for j in 0..coset_domain_size {
-                u_t_evals[j * t_domain_num_cosets + i] = u_t_val;
+                u_t_evals[j * t_domain_num_cosets + i] = u_t_denoms[i];
             }
         }
         let u_t =
