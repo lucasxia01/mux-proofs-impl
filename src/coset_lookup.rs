@@ -231,18 +231,23 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         let f_domain_num_cosets = f_domain_size / coset_domain_size;
         let t_domain_num_cosets = t_domain_size / coset_domain_size;
 
+        println!("f_domain_size: {}", f_domain_size);
+        println!("t_domain_size: {}", t_domain_size);
+        println!("coset_domain_size: {}", coset_domain_size);
+        println!("f_domain_num_cosets: {}", f_domain_num_cosets);
+        println!("t_domain_num_cosets: {}", t_domain_num_cosets);
         // Step 1: compute count polynomial c(X) that encodes the counts the frequency of each table vector in f
         let f_vecs: Vec<Vec<F>> = (0..f_domain_num_cosets)
             .map(|coset_idx| {
                 (0..coset_domain_size)
-                    .map(|i| f_evals[i * coset_domain_size + coset_idx])
+                    .map(|i| f_evals[i * f_domain_num_cosets + coset_idx])
                     .collect()
             })
             .collect();
         let t_vecs: Vec<Vec<F>> = (0..t_domain_num_cosets)
             .map(|coset_idx| {
                 (0..coset_domain_size)
-                    .map(|i| t_evals[i * coset_domain_size + coset_idx])
+                    .map(|i| t_evals[i * t_domain_num_cosets + coset_idx])
                     .collect()
             })
             .collect();
