@@ -1,15 +1,13 @@
-use ark_poly::{univariate::DensePolynomial, Evaluations, GeneralEvaluationDomain};
+#![allow(non_snake_case)]
+use ark_poly::{univariate::DensePolynomial, Evaluations};
 use ark_poly::{EvaluationDomain, Radix2EvaluationDomain};
-use blake2::Blake2s;
 
-use ark_bls12_381::{Bls12_381, Fr};
+use ark_bls12_381::Fr;
 use ark_ff::{fields::batch_inversion, One, Zero};
 use ark_poly::UVPolynomial;
 use ark_poly_commit::{LabeledPolynomial, PolynomialCommitment};
-use rand_chacha::ChaChaRng;
-use std::ops::Add;
+use itertools::Itertools;
 use std::ops::Mul;
-use std::ops::Sub;
 
 pub fn consecutive_sum(vec: &[Fr]) -> Vec<Fr> {
     let mut xs = vec.iter();
@@ -55,7 +53,11 @@ pub fn compute_round_1(fs: &[Fr], ts: &[Fr], beta: Fr, m: usize) -> (Vec<Fr>, Ve
             t_vec[i] += beta_pows[j] * ts[i * m + j];
         }
     }
-    // TODO: calculate c_vec
+    let counts = f_vec.iter().counts();
+    c_vec = t_vec
+        .iter()
+        .map(|t| Fr::from(counts[t] as u64))
+        .collect::<Vec<Fr>>();
     (f_vec, t_vec, c_vec)
 }
 
@@ -108,8 +110,8 @@ pub fn compute_round_3_polys(
     let t_hab = Evaluations::from_vec_and_domain(t_terms, H).interpolate();
     let s_f = Evaluations::from_vec_and_domain(s_f_vec.clone(), V).interpolate();
     let s_t = Evaluations::from_vec_and_domain(s_t_vec.clone(), H).interpolate();
-    s_f_vec.rotate_right(1);
-    s_t_vec.rotate_right(1);
+    s_f_vec.rotate_left(1);
+    s_t_vec.rotate_left(1);
     let s_f_rot = Evaluations::from_vec_and_domain(s_f_vec, V).interpolate();
     let s_t_rot = Evaluations::from_vec_and_domain(s_t_vec, H).interpolate();
     (f_hab, t_hab, s_f, s_t, s_f_rot, s_t_rot, sum)
@@ -148,19 +150,6 @@ pub fn compute_round_4_polys(
 }
 
 pub fn prover(f_vec: &[Fr], t_vec: &[Fr], c_vec: &[Fr]) {
-    /*let f_vec = vec![
-        Fr::from(1),
-        Fr::from(1),
-        Fr::from(1),
-        Fr::from(1),
-        Fr::from(1),
-        Fr::from(2),
-        Fr::from(2),
-        Fr::from(2),
-    ];
-    let t_vec = vec![Fr::from(1), Fr::from(2)];
-    let c_vec = vec![Fr::from(5), Fr::from(3)];*/
-
     let n = f_vec.len();
     let d = t_vec.len();
     let V = Radix2EvaluationDomain::<Fr>::new(n).unwrap();
@@ -193,4 +182,37 @@ pub fn prover(f_vec: &[Fr], t_vec: &[Fr], c_vec: &[Fr]) {
         H.clone(),
     );
     let z = Fr::from(2);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn round_1() {
+        let fs = vec![
+            Fr::from(1),
+            Fr::from(2),
+            Fr::from(1),
+            Fr::from(2),
+            Fr::from(1),
+            Fr::from(2),
+            Fr::from(3),
+            Fr::from(4),
+        ];
+        let ts = vec![Fr::from(1), Fr::from(2), Fr::from(3), Fr::from(4)];
+        let beta = Fr::from(7 as u64);
+        let (f_vec, t_vec, c_vec) = compute_round_1(&fs, &ts, beta, 2);
+        assert_eq!(
+            f_vec,
+            vec![
+                Fr::from(1 + 2 * 7),
+                Fr::from(1 + 2 * 7),
+                Fr::from(1 + 2 * 7),
+                Fr::from(3 + 4 * 7)
+            ]
+        );
+        assert_eq!(t_vec, vec![Fr::from(1 + 2 * 7), Fr::from(3 + 4 * 7)]);
+        assert_eq!(c_vec, vec![Fr::from(3), Fr::from(1)]);
+    }
 }
