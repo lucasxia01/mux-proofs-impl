@@ -35,6 +35,30 @@ pub fn compute_terms(numerator: Option<&[Fr]>, denominator: &[Fr], alpha: Fr) ->
     }
 }
 
+pub fn compute_round_1(fs: &[Fr], ts: &[Fr], beta: Fr, m: usize) -> (Vec<Fr>, Vec<Fr>, Vec<Fr>) {
+    let n = fs.len() / m;
+    let d = ts.len() / m;
+    let beta_pows = std::iter::successors(Some(Fr::one()), |n| Some(*n * beta))
+        .take(m)
+        .collect::<Vec<Fr>>();
+    let mut f_vec = vec![Fr::zero(); n];
+    let mut t_vec = vec![Fr::zero(); d];
+    let mut c_vec = vec![Fr::zero(); d];
+
+    for i in 0..n {
+        for j in 0..m {
+            f_vec[i] += beta_pows[j] * fs[i * m + j];
+        }
+    }
+    for i in 0..d {
+        for j in 0..m {
+            t_vec[i] += beta_pows[j] * ts[i * m + j];
+        }
+    }
+    // TODO: calculate c_vec
+    (f_vec, t_vec, c_vec)
+}
+
 pub fn compute_round_2_polys(
     f_vec: &[Fr],
     t_vec: &[Fr],
