@@ -4,11 +4,15 @@ use ark_std::rand::RngCore;
 pub mod error;
 pub mod rng;
 
+
 // Implementation of CosetLookup vector lookup
 pub mod coset_lookup;
 
 // Implementation of naive linear combination vector lookup
 pub mod naive;
+
+#[cfg(test)]
+pub mod test;
 
 pub trait VectorLookup<F: Field> {
     type Error;
@@ -26,6 +30,7 @@ pub trait VectorLookup<F: Field> {
     ) -> Result<Self::UniversalSRS, Self::Error>;
 
     /// Generate the prover and verifier keys specific to vector-size, lookup-size, table-size
+    /// Prover key and verifier key should contain information about size parameters
     fn index(
         srs: &Self::UniversalSRS,
         vector_size: usize,
@@ -42,9 +47,6 @@ pub trait VectorLookup<F: Field> {
         t_vals: Vec<F>,
         f: Self::VectorRepr,
         t: Self::VectorRepr,
-        vector_size: usize,
-        lookup_size: usize,
-        table_size: usize,
     ) -> Result<Self::Proof, Self::Error>;
 
     /// Perform verification of vector lookup proof
@@ -53,8 +55,5 @@ pub trait VectorLookup<F: Field> {
         proof: &Self::Proof,
         f_comm: &Self::VectorCommitment,
         t_comm: &Self::VectorCommitment,
-        vector_size: usize,
-        lookup_size: usize,
-        table_size: usize,
     ) -> Result<bool, Self::Error>;
 }

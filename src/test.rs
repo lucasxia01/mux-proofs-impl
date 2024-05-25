@@ -1,18 +1,18 @@
-use ark_poly::{univariate::DensePolynomial, GeneralEvaluationDomain};
-use blake2::Blake2s;
 
-use ark_bls12_381::{Bls12_381, Fr};
-use rand_chacha::ChaChaRng;
-pub mod rng;
-pub use mux_proofs_impl::rng::FiatShamirRng;
-pub use mux_proofs_impl::rng::SimpleHashFiatShamirRng;
-
-#[cfg(test)]
 mod tests {
-    use ark_poly_commit::{LabeledPolynomial, PolynomialCommitment};
-    use mux_proofs_impl::coset_lookup::{commit_to_evals, poly_from_evals, CosetLookup};
-
     use super::*;
+    use ark_poly::{univariate::DensePolynomial, GeneralEvaluationDomain};
+    use blake2::Blake2s;
+
+    use ark_bls12_381::{Bls12_381, Fr};
+    use rand_chacha::ChaChaRng;
+    use ark_poly_commit::{LabeledPolynomial, PolynomialCommitment};
+
+    use crate::{
+        rng::{FiatShamirRng, SimpleHashFiatShamirRng},
+        coset_lookup::{commit_to_evals, poly_from_evals, CosetLookup},
+    };
+
     #[test]
     fn prove_and_verify() {
         // create a prover from prover.rs
