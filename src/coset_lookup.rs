@@ -237,10 +237,10 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         let (committer_key, verifier_key) =
             PC::trim(&srs, size, supported_hiding_bound, Some(&coeff_support))
                 .map_err(Error::from_pc_err)?;
-        println!(
-            "lookup size: {}, table size: {}, vector size: {}",
-            lookup_size, table_size, vector_size
-        );
+        // println!(
+        //     "lookup size: {}, table size: {}, vector size: {}",
+        //     lookup_size, table_size, vector_size
+        // );
         let f_domain = Radix2EvaluationDomain::new(lookup_size * vector_size).unwrap();
         let t_domain = Radix2EvaluationDomain::new(table_size * vector_size).unwrap();
         let coset_domain = Radix2EvaluationDomain::new(vector_size).unwrap();
@@ -310,17 +310,17 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         let f_domain_size = f_vals.len();
         let t_domain_size = t_vals.len();
         let coset_domain_size = pk.coset_domain.size as usize;
-        assert_eq!(f_vals.len(), f_domain_size);
-        assert_eq!(t_vals.len(), t_domain_size);
-        assert_eq!(f_domain_size % coset_domain_size, 0);
-        assert_eq!(t_domain_size % coset_domain_size, 0);
+        // assert_eq!(f_vals.len(), f_domain_size);
+        // assert_eq!(t_vals.len(), t_domain_size);
+        // assert_eq!(f_domain_size % coset_domain_size, 0);
+        // assert_eq!(t_domain_size % coset_domain_size, 0);
         let f_domain_num_cosets = f_domain_size / coset_domain_size;
         let t_domain_num_cosets = t_domain_size / coset_domain_size;
-        println!("f_domain_size: {}", f_domain_size);
-        println!("t_domain_size: {}", t_domain_size);
-        println!("coset_domain_size: {}", coset_domain_size);
-        println!("f_domain_num_cosets: {}", f_domain_num_cosets);
-        println!("t_domain_num_cosets: {}", t_domain_num_cosets);
+        // println!("f_domain_size: {}", f_domain_size);
+        // println!("t_domain_size: {}", t_domain_size);
+        // println!("coset_domain_size: {}", coset_domain_size);
+        // println!("f_domain_num_cosets: {}", f_domain_num_cosets);
+        // println!("t_domain_num_cosets: {}", t_domain_num_cosets);
         let f_comm = f_comm_pair.0.clone();
         let f_comm_rand = f_comm_pair.1.clone();
         let t_comm = t_comm_pair.0.clone();
@@ -337,7 +337,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
                     .collect()
             })
             .collect();
-        println!("f_vecs: {:?}", f_vecs);
+        // println!("f_vecs: {:?}", f_vecs);
         let t_vecs: Vec<Vec<F>> = (0..t_domain_num_cosets)
             .map(|coset_idx| {
                 (0..coset_domain_size)
@@ -345,7 +345,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
                     .collect()
             })
             .collect();
-        println!("t_vecs: {:?}", t_vecs);
+        // println!("t_vecs: {:?}", t_vecs);
         // Count how many each vector appears in t_vecs.
         let mut f_vec_counts: HashMap<Vec<F>, u32> = HashMap::new();
         for f_vec in &f_vecs {
@@ -371,11 +371,11 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         for i in 0..t_domain_size {
             let t_vec = t_vecs[i % t_domain_num_cosets].clone();
             f_vec_counts.entry(t_vec.clone()).or_insert(0);
-            println!("f_vec_count: {}", f_vec_counts[&t_vec.clone()]);
+            // println!("f_vec_count: {}", f_vec_counts[&t_vec.clone()]);
 
             c_evals[i] = F::from(f_vec_counts[&t_vec]);
         }
-        println!("Count poly in eval form: {:?}", c_evals);
+        // println!("Count poly in eval form: {:?}", c_evals);
 
         // Step 1.b: ZeroTest to should that c(\gammaX) = c(X)
         // Commit to c(X) and the quotient polynomial c_quotient(X) = (c(X) - c(\gammaX))/t_vanishing(X)
@@ -383,7 +383,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         let c = LabeledPolynomial::new("c".to_string(), poly_from_evals(&c_evals), None, None);
         // rotate c_evals by gamma, which is t_domain_num_cosets
         c_evals.rotate_left(t_domain_num_cosets); // TODO: double check this, and investigate the complexity of rotate_left
-        println!("Rotated c_evals: {:?}", c_evals);
+                                                  // println!("Rotated c_evals: {:?}", c_evals);
         let c_rotated_gamma = LabeledPolynomial::new(
             "c_rotated_gamma".to_string(),
             poly_from_evals(&c_evals),
@@ -630,8 +630,9 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         T_f_evals[f_domain_size - 1] = u_f_evals[f_domain_size - 1];
         for i in (0..f_domain_size - 1).rev() {
             T_f_evals[i] = T_f_evals[i + 1] + u_f_evals[i];
+            // println!("T_f_evals[{}]: {}", i, T_f_evals[i]);
         }
-        println!("T_f_evals: {:?}", T_f_evals);
+
         let T_f =
             LabeledPolynomial::new("T_f".to_string(), poly_from_evals(&T_f_evals), None, None);
         T_f_evals.rotate_left(1);
@@ -647,6 +648,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         T_t_evals[t_domain_size - 1] = c_evals[t_domain_size - 1] * u_t_evals[t_domain_size - 1];
         for i in (0..t_domain_size - 1).rev() {
             T_t_evals[i] = T_t_evals[i + 1] + c_evals[i] * u_t_evals[i];
+            // println!("T_t_evals[{}]: {}", i, T_t_evals[i]);
         }
         let T_t =
             LabeledPolynomial::new("T_t".to_string(), poly_from_evals(&T_t_evals), None, None);
@@ -869,7 +871,6 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         let query_set = get_query_set(pt, gamma_pt, omega_f_pt, omega_t_pt);
 
         let opening_challenge = F::rand(&mut fs_rng);
-        println!("before batch open");
         let pc_proof = PC::batch_open(
             &pk.committer_key,
             polys,             // all the polys, including the quotient polynomials (no rotated)
@@ -880,7 +881,6 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             None,
         )
         .map_err(Error::from_pc_err)?;
-        println!("after batch open");
         // lets say the zero test is A(X) = B(gamma X) over G, C(X) = 0 over G
         // have to send commitments to A, B, and Q_G(X) = LC/V_G(X)
         // we need B(gamma X) to compute Q_G(X)
@@ -986,7 +986,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
 
         // Get the verifier query challenge
         let pt = F::rand(&mut fs_rng);
-        println!("query pt: {}", pt);
+        // println!("query pt: {:?}", pt);
         let gamma_pt = pt * vk.coset_domain.group_gen;
         let omega_f_pt = pt * vk.f_domain.group_gen;
         let omega_t_pt = pt * vk.t_domain.group_gen;

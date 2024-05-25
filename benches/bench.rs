@@ -1,14 +1,12 @@
-// For benchmark, run: 
+// For benchmark, run:
 // ``cargo bench --bench mux_proofs_benches --  [--vec_size <vec_size1>...][--lookup_size <lookup_size1>...][--table_size <table_size1>...]``
 
-use std::{io::stdout, string::String, time::Instant, mem::size_of_val};
 use csv::Writer;
+use std::{io::stdout, mem::size_of_val, string::String, time::Instant};
 
 use ark_ff::{Field, UniformRand};
 
-use mux_proofs_impl::{
-    VectorLookup,
-};
+use mux_proofs_impl::{coset_lookup::CosetLookup, rng::SimpleHashFiatShamirRng, VectorLookup};
 
 fn benchmark<F: Field, VLkup: VectorLookup<F>>(
     scheme_name: String,
@@ -18,12 +16,20 @@ fn benchmark<F: Field, VLkup: VectorLookup<F>>(
 ) {
     let mut csv_writer = Writer::from_writer(stdout());
     csv_writer
-        .write_record(&["scheme", "operation", "vec_size", "lookup_size", "table_size", "measure"])
+        .write_record(&[
+            "scheme",
+            "operation",
+            "vec_size",
+            "lookup_size",
+            "table_size",
+            "measure",
+        ])
         .unwrap();
     csv_writer.flush().unwrap();
 
     // Assume size vectors are passed in increasing order
-    let max_size = vec_sizes.last().unwrap() * lookup_sizes.last().unwrap() * table_sizes.last().unwrap(); 
+    let max_size =
+        vec_sizes.last().unwrap() * lookup_sizes.last().unwrap() * table_sizes.last().unwrap();
     let rng = &mut ark_std::test_rng();
     let mut start = Instant::now();
     let srs = VLkup::universal_setup(max_size, rng).unwrap();
@@ -39,14 +45,23 @@ fn benchmark<F: Field, VLkup: VectorLookup<F>>(
         ])
         .unwrap();
     csv_writer.flush().unwrap();
-    
+
     let dummy_value = F::rand(rng);
     for vec_size in vec_sizes.iter() {
         for lookup_size in lookup_sizes.iter() {
             for table_size in table_sizes.iter() {
                 // Generate dummy lookup and table max sizes
-                let lookup_vals = vec![dummy_value; vec_size * lookup_size];
-                let table_vals = vec![dummy_value; vec_size * table_size];
+                let lookup_vals: Vec<F> = (0..*vec_size)
+                    .cycle()
+                    .map(|i| F::from(i as u64))
+                    .take(vec_size * lookup_size)
+                    .collect();
+
+                let table_vals: Vec<F> = (0..*vec_size * table_size)
+                    .cycle()
+                    .map(|i| F::from(i as u64))
+                    .take(vec_size * table_size)
+                    .collect(); // TODO: make this unique
 
                 // Generate prover and verifier keys
                 start = Instant::now();
@@ -64,22 +79,25 @@ fn benchmark<F: Field, VLkup: VectorLookup<F>>(
                     .unwrap();
                 csv_writer.flush().unwrap();
 
-                // Commit 
+                // Commit
                 // TODO: Inefficient since lookup comm and table comm can be reused over the for loop
-                let (lookup_comm, lookup_repr) = VLkup::commit_lookup(&pk, lookup_vals.clone()).unwrap();
-                let (table_comm, table_repr) = VLkup::commit_table(&pk, table_vals.clone()).unwrap();
+                let (lookup_comm, lookup_repr) =
+                    VLkup::commit_lookup(&pk, lookup_vals.clone()).unwrap();
+                let (table_comm, table_repr) =
+                    VLkup::commit_table(&pk, table_vals.clone()).unwrap();
 
                 // Prove
                 start = Instant::now();
                 let proof = VLkup::prove(
-                    &pk, 
+                    &pk,
                     &lookup_comm,
                     &table_comm,
                     lookup_vals.clone(),
                     table_vals.clone(),
                     lookup_repr.clone(),
                     table_repr.clone(),
-                ).unwrap();
+                )
+                .unwrap();
                 end = start.elapsed().as_millis();
                 csv_writer
                     .write_record(&[
@@ -95,12 +113,7 @@ fn benchmark<F: Field, VLkup: VectorLookup<F>>(
 
                 // Verify
                 start = Instant::now();
-                VLkup::verify(
-                    &vk, 
-                    &proof,
-                    &lookup_comm,
-                    &table_comm,
-                ).unwrap();
+                VLkup::verify(&vk, &proof, &lookup_comm, &table_comm).unwrap();
                 end = start.elapsed().as_millis();
                 csv_writer
                     .write_record(&[
@@ -129,7 +142,6 @@ fn benchmark<F: Field, VLkup: VectorLookup<F>>(
             }
         }
     }
-
 }
 
 fn main() {
@@ -137,57 +149,56 @@ fn main() {
     if args.last().unwrap() == "--bench" {
         args.pop();
     }
-    let (mut vec_sizes, mut lookup_sizes, mut table_sizes): (Vec<usize>, Vec<usize>, Vec<usize>) = if args.len() > 1
-        && (args[1] == "-h" || args[1] == "--help")
-    {
-        println!("Usage: ``cargo bench --bench mux_proofs_benches --  [--vec_size <vec_size1>...][--lookup_size <lookup_size1>...][--table_size <table_size1>...]``");
-        return;
-    } else {
-        let mut args = args.into_iter().skip(1);
-        let mut next_arg = args.next();
-        let mut vec_sizes = vec![];
-        let mut lookup_sizes = vec![];
-        let mut table_sizes = vec![];
-        while let Some(arg) = next_arg.clone() {
-            match arg.as_str() {
-                "--vec_size" => {
-                    next_arg = args.next();
-                    'vec_size: while let Some(vec_arg) = next_arg.clone() {
-                        match vec_arg.parse::<usize>() {
-                            Ok(vec_size) => vec_sizes.push(vec_size),
-                            Err(_) => break 'vec_size,
-                        }
+    let (mut vec_sizes, mut lookup_sizes, mut table_sizes): (Vec<usize>, Vec<usize>, Vec<usize>) =
+        if args.len() > 1 && (args[1] == "-h" || args[1] == "--help") {
+            println!("Usage: ``cargo bench --bench mux_proofs_benches --  [--vec_size <vec_size1>...][--lookup_size <lookup_size1>...][--table_size <table_size1>...]``");
+            return;
+        } else {
+            let mut args = args.into_iter().skip(1);
+            let mut next_arg = args.next();
+            let mut vec_sizes = vec![];
+            let mut lookup_sizes = vec![];
+            let mut table_sizes = vec![];
+            while let Some(arg) = next_arg.clone() {
+                match arg.as_str() {
+                    "--vec_size" => {
                         next_arg = args.next();
-                    }
-                }
-                "--lookup_size" => {
-                    next_arg = args.next();
-                    'lookup_size: while let Some(lookup_arg) = next_arg.clone() {
-                        match lookup_arg.parse::<usize>() {
-                            Ok(lookup_size) => lookup_sizes.push(lookup_size),
-                            Err(_) => break 'lookup_size,
+                        'vec_size: while let Some(vec_arg) = next_arg.clone() {
+                            match vec_arg.parse::<usize>() {
+                                Ok(vec_size) => vec_sizes.push(vec_size),
+                                Err(_) => break 'vec_size,
+                            }
+                            next_arg = args.next();
                         }
-                        next_arg = args.next();
                     }
-                }
-                "--table_size" => {
-                    next_arg = args.next();
-                    'table_size: while let Some(table_arg) = next_arg.clone() {
-                        match table_arg.parse::<usize>() {
-                            Ok(table_size) => table_sizes.push(table_size),
-                            Err(_) => break 'table_size,
+                    "--lookup_size" => {
+                        next_arg = args.next();
+                        'lookup_size: while let Some(lookup_arg) = next_arg.clone() {
+                            match lookup_arg.parse::<usize>() {
+                                Ok(lookup_size) => lookup_sizes.push(lookup_size),
+                                Err(_) => break 'lookup_size,
+                            }
+                            next_arg = args.next();
                         }
-                        next_arg = args.next();
                     }
-                }
-                _ => {
-                    println!("Invalid argument: {}", arg);
-                    return;
+                    "--table_size" => {
+                        next_arg = args.next();
+                        'table_size: while let Some(table_arg) = next_arg.clone() {
+                            match table_arg.parse::<usize>() {
+                                Ok(table_size) => table_sizes.push(table_size),
+                                Err(_) => break 'table_size,
+                            }
+                            next_arg = args.next();
+                        }
+                    }
+                    _ => {
+                        println!("Invalid argument: {}", arg);
+                        return;
+                    }
                 }
             }
-        }
-        (vec_sizes, lookup_sizes, table_sizes)
-    };
+            (vec_sizes, lookup_sizes, table_sizes)
+        };
     if vec_sizes.len() == 0 {
         vec_sizes.push(64);
     }
@@ -198,10 +209,21 @@ fn main() {
         table_sizes.push(256);
     }
 
-    //benchmark::<CosetLookup<MarlinKZG, etc>>(
-    //    "coset_lookup".to_string(),
-    //    &vec_sizes,
-    //    &lookup_sizes,
-    //    &table_sizes,
-    //);
+    use ark_poly::{univariate::DensePolynomial, EvaluationDomain, Radix2EvaluationDomain};
+    use blake2::Blake2s;
+
+    use ark_bls12_381::{Bls12_381, Fr};
+    use ark_poly_commit::{LabeledPolynomial, PolynomialCommitment};
+    use rand_chacha::ChaChaRng;
+
+    use ark_poly_commit::marlin_pc::MarlinKZG10;
+    type PC = MarlinKZG10<Bls12_381, DensePolynomial<Fr>>;
+    type FS = SimpleHashFiatShamirRng<Blake2s, ChaChaRng>;
+    type CosetLookupInst = CosetLookup<Fr, PC, FS>;
+    benchmark::<Fr, CosetLookupInst>(
+        "coset_lookup".to_string(),
+        &vec_sizes,
+        &lookup_sizes,
+        &table_sizes,
+    );
 }
