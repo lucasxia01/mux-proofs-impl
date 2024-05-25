@@ -973,7 +973,10 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         )
         .map_err(Error::from_pc_err)?;
 
-        let pt_to_m = pt.pow(&[coset_domain.size as u64]);
+        let pt_to_coset_domain_size = pt.pow(&[coset_domain.size as u64]);
+        let pt_to_f_domain_size = pt.pow(&[f_domain.size as u64]);
+        let pt_to_t_domain_size = pt.pow(&[t_domain.size as u64]);
+
         // Now check the zero tests, mirror it from the prover
         // Check the zero tests associated with quotient_V
         let lagrange_0_V = ith_lagrange_poly_eval(0, coset_domain, pt);
@@ -988,12 +991,12 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             + V_zero_test_1.mul(batching_challenge_powers[1])
             + V_zero_test_2.mul(batching_challenge_powers[2])
             + V_zero_test_3.mul(batching_challenge_powers[3]))
-            - (pt_to_m - F::one()) * proof.quotient_V_eval_at_pt;
+            - (pt_to_coset_domain_size - F::one()) * proof.quotient_V_eval_at_pt;
         result = result && V_zero_test_result.is_zero();
         assert!(V_zero_test_result.is_zero());
 
         // Check the zero tests associated with quotient_H_f
-        let H_f_last_coset_vanishing = pt_to_m
+        let H_f_last_coset_vanishing = pt_to_coset_domain_size
             - F::from(
                 f_domain
                     .group_gen
@@ -1003,34 +1006,70 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             (proof.idx_f_eval_at_pt - proof.idx_f_eval_at_omega_f_pt) * H_f_last_coset_vanishing;
         let H_f_zero_test_1 = proof.s_f_eval_at_gamma_pt - proof.s_f_eval_at_pt;
 
-        // let H_f_zero_test_2 = proof.b_f_eval_at_gamma_pt
-        //     - proof.b_f_eval_at_pt
-        //     - (proof.idx_f_eval_at_gamma_pt * proof.f_eval_at_gamma_pt)+
-        //         .sub(b_f.polynomial())
-        //         .sub(&idx_f_rotated_gamma.mul(f_rotated_gamma.polynomial()))
-        //         .add(s_f.mul(coset_domain.size_inv));
-        // let alpha_poly = &DensePolynomial::from_coefficients_vec(vec![alpha]);
-        // let H_f_zero_test_3 = u_f.mul(&alpha_poly.sub(s_f.polynomial())).sub(one_poly);
-        // let H_f_last_zero =
-        //     &DensePolynomial::from_coefficients_vec(vec![-f_domain.group_gen_inv, F::one()]);
-        // let H_f_zero_test_4 =
-        //     (T_f_rotated_omega.polynomial() + &u_f.sub(T_f.polynomial())).mul(H_f_last_zero);
-        // let lagrange_last_H_f: DensePolynomial<F> =
-        //     ith_lagrange_poly(f_domain_size - 1, f_domain).into();
-        // let H_f_zero_test_5 = lagrange_last_H_f.mul(&T_f.sub(u_f.polynomial()));
-        // let lagrange_0_H_f: DensePolynomial<F> = ith_lagrange_poly(0, f_domain).into();
-        // let H_f_zero_test_6 = lagrange_0_H_f.mul(&T_f.sub(T_t.polynomial()));
-        // // Now batch together all the zero tests
+        let H_f_zero_test_2 = proof.b_f_eval_at_gamma_pt
+            - proof.b_f_eval_at_pt
+            - (proof.idx_f_eval_at_gamma_pt * proof.f_eval_at_gamma_pt)
+            + (proof.s_f_eval_at_pt * coset_domain.size_inv);
+        let H_f_zero_test_3 = proof.u_f_eval_at_pt * (alpha - proof.s_f_eval_at_pt) - F::one();
+        let H_f_last_zero = pt - f_domain.group_gen_inv;
+        let H_f_zero_test_4 = H_f_last_zero
+            * (proof.T_f_eval_at_omega_f_pt + proof.u_f_eval_at_pt - proof.T_f_eval_at_pt);
+        let f_domain_size_minus_1 = (f_domain.size - 1) as usize;
+        let lagrange_last_H_f = ith_lagrange_poly_eval(f_domain_size_minus_1, f_domain, pt);
 
-        // let (quotient_H_f, rem_H_f) = (H_f_zero_test_0
-        //     + H_f_zero_test_1.mul(batching_challenge_powers[1])
-        //     + H_f_zero_test_2.mul(batching_challenge_powers[2])
-        //     + H_f_zero_test_3.mul(batching_challenge_powers[3])
-        //     + H_f_zero_test_4.mul(batching_challenge_powers[4])
-        //     + H_f_zero_test_5.mul(batching_challenge_powers[5])
-        //     + H_f_zero_test_6.mul(batching_challenge_powers[6]))
-        // .divide_by_vanishing_poly(f_domain)
-        // .unwrap();
+        let H_f_zero_test_5 = lagrange_last_H_f * (proof.T_f_eval_at_pt - proof.u_f_eval_at_pt);
+        let lagrange_0_H_f = ith_lagrange_poly_eval(0, f_domain, pt);
+        let H_f_zero_test_6 = lagrange_0_H_f * (proof.T_f_eval_at_pt - proof.T_t_eval_at_pt);
+        // Now batch together all the zero tests
+
+        let quotient_H_f_result = (H_f_zero_test_0
+            + H_f_zero_test_1.mul(batching_challenge_powers[1])
+            + H_f_zero_test_2.mul(batching_challenge_powers[2])
+            + H_f_zero_test_3.mul(batching_challenge_powers[3])
+            + H_f_zero_test_4.mul(batching_challenge_powers[4])
+            + H_f_zero_test_5.mul(batching_challenge_powers[5])
+            + H_f_zero_test_6.mul(batching_challenge_powers[6]))
+            - (pt_to_f_domain_size - F::one()) * proof.quotient_H_f_eval_at_pt;
+        result = result && quotient_H_f_result.is_zero();
+        assert!(quotient_H_f_result.is_zero());
+
+        // Check the zero tests associated with quotient_H_t
+        let H_t_zero_test_0 = proof.c_eval_at_gamma_pt - proof.c_eval_at_pt;
+        let H_t_last_coset_vanishing = pt_to_coset_domain_size
+            - F::from(
+                t_domain
+                    .group_gen
+                    .pow(&[(t_domain.size - coset_domain.size) as u64]),
+            );
+        let H_t_zero_test_1 =
+            (proof.idx_t_eval_at_pt - proof.idx_t_eval_at_omega_t_pt) * H_t_last_coset_vanishing;
+        let H_t_zero_test_2 = proof.s_t_eval_at_gamma_pt - proof.s_t_eval_at_pt;
+
+        let H_t_zero_test_3 = proof.b_t_eval_at_gamma_pt
+            - proof.b_t_eval_at_pt
+            - (proof.idx_t_eval_at_gamma_pt * proof.t_eval_at_gamma_pt)
+            + (proof.s_t_eval_at_pt * coset_domain.size_inv);
+        let H_t_zero_test_4 = proof.u_t_eval_at_pt * (alpha - proof.s_t_eval_at_pt) - F::one();
+        let H_t_last_zero = pt - t_domain.group_gen_inv;
+        let H_t_zero_test_5 = H_t_last_zero
+            * (proof.T_t_eval_at_omega_t_pt + proof.c_eval_at_pt * proof.u_t_eval_at_pt
+                - proof.T_t_eval_at_pt);
+        let t_domain_size_minus_1 = (t_domain.size - 1) as usize;
+        let lagrange_last_H_t = ith_lagrange_poly_eval(t_domain_size_minus_1, t_domain, pt);
+        let H_t_zero_test_6 =
+            lagrange_last_H_t * (proof.T_t_eval_at_pt - proof.c_eval_at_pt * proof.u_t_eval_at_pt);
+
+        // Now batch together all the zero tests
+        let quotient_H_t_result = (H_t_zero_test_0
+            + H_t_zero_test_1.mul(batching_challenge_powers[1])
+            + H_t_zero_test_2.mul(batching_challenge_powers[2])
+            + H_t_zero_test_3.mul(batching_challenge_powers[3])
+            + H_t_zero_test_4.mul(batching_challenge_powers[4])
+            + H_t_zero_test_5.mul(batching_challenge_powers[5])
+            + H_t_zero_test_6.mul(batching_challenge_powers[6]))
+            - (pt_to_t_domain_size - F::one()) * proof.quotient_H_t_eval_at_pt;
+        result = result && quotient_H_t_result.is_zero();
+        assert!(quotient_H_t_result.is_zero());
         return Ok(result);
     }
 
