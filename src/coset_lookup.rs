@@ -1,6 +1,6 @@
 // This file contains the prover, round by round
 
-use std::{cmp::max, collections::HashMap, marker::PhantomData, vec};
+use std::{collections::HashMap, marker::PhantomData, vec};
 
 use ark_ff::{batch_inversion, to_bytes, FftField, Zero};
 use ark_poly::{
@@ -113,48 +113,48 @@ pub type UniversalSRS<F, PC> = <PC as PolynomialCommitment<F, DensePolynomial<F>
 
 // Proof with 14 Commitments, 1 PC Proof, and 27 Evaluations
 pub struct Proof<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>> {
-    c_comm: LabeledCommitment<PC::Commitment>,
-    idx_f_comm: LabeledCommitment<PC::Commitment>,
-    idx_t_comm: LabeledCommitment<PC::Commitment>,
-    s_f_comm: LabeledCommitment<PC::Commitment>,
-    s_t_comm: LabeledCommitment<PC::Commitment>,
-    b_f_comm: LabeledCommitment<PC::Commitment>,
-    b_t_comm: LabeledCommitment<PC::Commitment>,
-    u_f_comm: LabeledCommitment<PC::Commitment>,
-    u_t_comm: LabeledCommitment<PC::Commitment>,
-    T_f_comm: LabeledCommitment<PC::Commitment>,
-    T_t_comm: LabeledCommitment<PC::Commitment>,
-    quotient_V_comm: LabeledCommitment<PC::Commitment>,
-    quotient_H_f_comm: LabeledCommitment<PC::Commitment>,
-    quotient_H_t_comm: LabeledCommitment<PC::Commitment>,
-    pc_proof: <PC as PolynomialCommitment<F, DensePolynomial<F>>>::BatchProof,
-    c_eval_at_gamma_pt: F,
-    c_eval_at_pt: F,
-    idx_f_eval_at_pt: F,
-    idx_t_eval_at_pt: F,
-    idx_f_eval_at_gamma_pt: F,
-    idx_t_eval_at_gamma_pt: F,
-    idx_f_eval_at_omega_f_pt: F,
-    idx_t_eval_at_omega_t_pt: F,
-    s_f_eval_at_gamma_pt: F,
-    s_t_eval_at_gamma_pt: F,
-    s_f_eval_at_pt: F,
-    s_t_eval_at_pt: F,
-    b_f_eval_at_gamma_pt: F,
-    b_t_eval_at_gamma_pt: F,
-    b_f_eval_at_pt: F,
-    b_t_eval_at_pt: F,
-    f_eval_at_gamma_pt: F,
-    t_eval_at_gamma_pt: F,
-    u_f_eval_at_pt: F,
-    u_t_eval_at_pt: F,
-    T_f_eval_at_omega_f_pt: F,
-    T_t_eval_at_omega_t_pt: F,
-    T_f_eval_at_pt: F,
-    T_t_eval_at_pt: F,
-    quotient_V_eval_at_pt: F,
-    quotient_H_f_eval_at_pt: F,
-    quotient_H_t_eval_at_pt: F,
+    pub c_comm: LabeledCommitment<PC::Commitment>,
+    pub idx_f_comm: LabeledCommitment<PC::Commitment>,
+    pub idx_t_comm: LabeledCommitment<PC::Commitment>,
+    pub s_f_comm: LabeledCommitment<PC::Commitment>,
+    pub s_t_comm: LabeledCommitment<PC::Commitment>,
+    pub b_f_comm: LabeledCommitment<PC::Commitment>,
+    pub b_t_comm: LabeledCommitment<PC::Commitment>,
+    pub u_f_comm: LabeledCommitment<PC::Commitment>,
+    pub u_t_comm: LabeledCommitment<PC::Commitment>,
+    pub T_f_comm: LabeledCommitment<PC::Commitment>,
+    pub T_t_comm: LabeledCommitment<PC::Commitment>,
+    pub quotient_V_comm: LabeledCommitment<PC::Commitment>,
+    pub quotient_H_f_comm: LabeledCommitment<PC::Commitment>,
+    pub quotient_H_t_comm: LabeledCommitment<PC::Commitment>,
+    pub pc_proof: <PC as PolynomialCommitment<F, DensePolynomial<F>>>::BatchProof,
+    pub c_eval_at_gamma_pt: F,
+    pub c_eval_at_pt: F,
+    pub idx_f_eval_at_pt: F,
+    pub idx_t_eval_at_pt: F,
+    pub idx_f_eval_at_gamma_pt: F,
+    pub idx_t_eval_at_gamma_pt: F,
+    pub idx_f_eval_at_omega_f_pt: F,
+    pub idx_t_eval_at_omega_t_pt: F,
+    pub s_f_eval_at_gamma_pt: F,
+    pub s_t_eval_at_gamma_pt: F,
+    pub s_f_eval_at_pt: F,
+    pub s_t_eval_at_pt: F,
+    pub b_f_eval_at_gamma_pt: F,
+    pub b_t_eval_at_gamma_pt: F,
+    pub b_f_eval_at_pt: F,
+    pub b_t_eval_at_pt: F,
+    pub f_eval_at_gamma_pt: F,
+    pub t_eval_at_gamma_pt: F,
+    pub u_f_eval_at_pt: F,
+    pub u_t_eval_at_pt: F,
+    pub T_f_eval_at_omega_f_pt: F,
+    pub T_t_eval_at_omega_t_pt: F,
+    pub T_f_eval_at_pt: F,
+    pub T_t_eval_at_pt: F,
+    pub quotient_V_eval_at_pt: F,
+    pub quotient_H_f_eval_at_pt: F,
+    pub quotient_H_t_eval_at_pt: F,
 }
 
 pub struct ProverKey<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>> {
@@ -226,7 +226,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
     ) -> Result<(Self::ProverKey, Self::VerifierKey), Self::Error> {
         let index_time = start_timer!(|| "Marlin::Index");
 
-        let size = max(lookup_size, table_size) * vector_size;
+        let size = 2 * std::cmp::max(lookup_size, table_size) * vector_size;
         if srs.max_degree() < size {
             Err(Error::IndexTooLarge)?;
         }
@@ -766,6 +766,8 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         let lagrange_last_H_t: DensePolynomial<F> =
             ith_lagrange_poly(t_domain_size - 1, &pk.t_domain).into();
         let H_t_zero_test_6 = lagrange_last_H_t.mul(&T_t.sub(&c.mul(u_t.polynomial())));
+
+        // println!("Degree of H_t_zero_test_0: {}, H_t_zero_test_1: {}, H_t_zero_test_2: {}, H_t_zero_test_3: {}, H_t_zero_test_4: {}, H_t_zero_test_5: {}, H_t_zero_test_6: {}", H_t_zero_test_0.degree(), H_t_zero_test_1.degree(), H_t_zero_test_2.degree(), H_t_zero_test_3.degree(), H_t_zero_test_4.degree(), H_t_zero_test_5.degree(), H_t_zero_test_6.degree());
         let (quotient_H_t, rem_H_t) = (H_t_zero_test_0
             + H_t_zero_test_1.mul(batching_challenge_powers[1])
             + H_t_zero_test_2.mul(batching_challenge_powers[2])
@@ -784,6 +786,13 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         assert!(rem_V.is_zero());
         assert!(rem_H_f.is_zero());
         assert!(rem_H_t.is_zero());
+
+        // println!(
+        //     "size of quotient_V: {}, quotient_H_f: {}, quotient_H_t: {}",
+        //     quotient_V.clone().degree(),
+        //     quotient_H_f.clone().degree(),
+        //     quotient_H_t.clone().degree()
+        // );
 
         let quotient_V_labeled =
             LabeledPolynomial::new("quotient_V".to_string(), quotient_V, None, None);

@@ -28,8 +28,9 @@ fn benchmark<F: Field, VLkup: VectorLookup<F>>(
     csv_writer.flush().unwrap();
 
     // Assume size vectors are passed in increasing order
-    let max_size =
-        vec_sizes.last().unwrap() * lookup_sizes.last().unwrap() * table_sizes.last().unwrap();
+    let max_size = vec_sizes.last().unwrap()
+        * std::cmp::max(lookup_sizes.last().unwrap(), table_sizes.last().unwrap())
+        * 2;
     let rng = &mut ark_std::test_rng();
     let mut start = Instant::now();
     let srs = VLkup::universal_setup(max_size, rng).unwrap();
@@ -98,6 +99,7 @@ fn benchmark<F: Field, VLkup: VectorLookup<F>>(
                     table_repr.clone(),
                 )
                 .unwrap();
+
                 end = start.elapsed().as_millis();
                 csv_writer
                     .write_record(&[

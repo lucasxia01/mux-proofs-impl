@@ -1,0 +1,53 @@
+create a parameters trait for parameters like m, n, ell
+
+stateless prover/verify function
+
+modularize might require defining state objects
+
+look at ark-marlin mostly :)
+
+comparison with 
+
+
+        // if G and H are subgroups, V_G, V_H are vanishing polys, G is subgroup of H
+        // A(X) = 0 over G, B(X) = 0 over H
+        // A(X) * V_H(X) / V_G(X) + alpha * B(X) = 0 over H
+
+
+query set is:
+c at gamma_pt
+c at pt
+idx_f at pt
+idx_t at pt
+idx_f at gamma_pt
+idx_t at gamma_pt
+idx_f at omega_f_pt
+idx_t at omega_t_pt
+s_f at gamma_pt
+s_t at gamma_pt
+s_f at pt
+s_t at pt
+b_f at gamma_pt
+b_t at gamma_pt
+b_f at pt
+b_t at pt
+f at gamma_pt
+t at gamma_pt
+u_f at pt
+u_t at pt
+T_f at omega_f_pt
+T_t at omega_t_pt
+T_f at pt
+T_t at pt
+quotient_V at pt
+quotient_H_f at pt
+quotient_H_t at pt
+
+G = 96 bytes
+
+14 G
+1 BatchProof = 4 * (96 + 48) bytes
+27 F 
+
+96 * 14 + 4 * (96 + 48) + 27 * 48 = 3216 bytes
+

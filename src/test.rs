@@ -1,4 +1,6 @@
 mod tests {
+    use std::mem::size_of_val;
+
     use super::*;
     use ark_poly::{univariate::DensePolynomial, EvaluationDomain, Radix2EvaluationDomain};
     use blake2::Blake2s;
@@ -38,6 +40,12 @@ mod tests {
         // Prove
         let proof =
             CosetLookupInst::prove(&pk, &f_comm_pair, &t_comm_pair, f_vals, t_vals, f, t).unwrap();
+        println!("c comm size: {:?}", size_of_val(proof.c_comm.commitment()));
+        println!("pc proof length: {:?}", proof.pc_proof.len());
+        println!(
+            "pc proof element size: {:?}",
+            size_of_val(&proof.pc_proof[0].w)
+        );
         let result = CosetLookupInst::verify(&vk, &proof, &f_comm_pair, &t_comm_pair).unwrap();
         return result;
     }
@@ -74,21 +82,57 @@ mod tests {
     fn prove_and_verify_medium() {
         // vector size of 4
         let f_vals = vec![
-            Fr::from(1), Fr::from(2), Fr::from(1), Fr::from(2),
-            Fr::from(1), Fr::from(2), Fr::from(1), Fr::from(2),
-            Fr::from(1), Fr::from(2), Fr::from(1), Fr::from(2),
-            Fr::from(1), Fr::from(2), Fr::from(1), Fr::from(2),
-            Fr::from(2), Fr::from(1), Fr::from(2), Fr::from(1),
-            Fr::from(2), Fr::from(1), Fr::from(2), Fr::from(1),
-            Fr::from(2), Fr::from(1), Fr::from(2), Fr::from(1),
-            Fr::from(2), Fr::from(3), Fr::from(2), Fr::from(3),
+            Fr::from(1),
+            Fr::from(2),
+            Fr::from(1),
+            Fr::from(2),
+            Fr::from(1),
+            Fr::from(2),
+            Fr::from(1),
+            Fr::from(2),
+            Fr::from(1),
+            Fr::from(2),
+            Fr::from(1),
+            Fr::from(2),
+            Fr::from(1),
+            Fr::from(2),
+            Fr::from(1),
+            Fr::from(2),
+            Fr::from(2),
+            Fr::from(1),
+            Fr::from(2),
+            Fr::from(1),
+            Fr::from(2),
+            Fr::from(1),
+            Fr::from(2),
+            Fr::from(1),
+            Fr::from(2),
+            Fr::from(1),
+            Fr::from(2),
+            Fr::from(1),
+            Fr::from(2),
+            Fr::from(3),
+            Fr::from(2),
+            Fr::from(3),
         ];
 
         let t_vals = vec![
-            Fr::from(1), Fr::from(2), Fr::from(1), Fr::from(2),
-            Fr::from(1), Fr::from(1), Fr::from(1), Fr::from(1),
-            Fr::from(2), Fr::from(1), Fr::from(2), Fr::from(1),
-            Fr::from(2), Fr::from(3), Fr::from(2), Fr::from(3),
+            Fr::from(1),
+            Fr::from(2),
+            Fr::from(1),
+            Fr::from(2),
+            Fr::from(1),
+            Fr::from(1),
+            Fr::from(1),
+            Fr::from(1),
+            Fr::from(2),
+            Fr::from(1),
+            Fr::from(2),
+            Fr::from(1),
+            Fr::from(2),
+            Fr::from(3),
+            Fr::from(2),
+            Fr::from(3),
         ]; // (1, 2, 1, 2), (1, 1, 1, 1), (2, 1, 2, 1), (2, 3, 2, 3)
         let vector_size = 4;
         assert!(prove_and_verify(f_vals, t_vals, vector_size));
