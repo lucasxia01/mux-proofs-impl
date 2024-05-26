@@ -49,5 +49,11 @@ G = 96 bytes
 1 BatchProof = 4 * (96 + 48) bytes
 27 F 
 
+Proof sizes:
+7 * 96 + 11 * 48 + 3 * (96 + 48) = 1632 bytes
 96 * 14 + 4 * (96 + 48) + 27 * 48 = 3216 bytes
+
+Commitment sizes:
+2 * vec_size * 96
+2 * 96
 
