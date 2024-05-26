@@ -444,8 +444,9 @@ where
             .take(m)
             .collect::<Vec<F>>();
 
-        let _ = lc_comms::<F, E, PC>(&f_comm.0, &beta_pows);
-        let _ = lc_comms::<F, E, PC>(&t_comm.0, &beta_pows);
+        let a = lc_comms::<F, E, PC>(&f_comm.0, &beta_pows);
+        let b = lc_comms::<F, E, PC>(&t_comm.0, &beta_pows);
+        assert!(std::mem::size_of_val(&a) + 5000 >= std::mem::size_of_val(&b));
 
         let alpha = F::rand(&mut fs_rng);
         let zeta = F::rand(&mut fs_rng);
