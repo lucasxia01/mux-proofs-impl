@@ -539,16 +539,7 @@ mod tests {
             Fr::from(3),
             Fr::from(4),
         ];
-        let ts = vec![
-            Fr::from(1),
-            Fr::from(2),
-            Fr::from(3),
-            Fr::from(4),
-            Fr::from(5),
-            Fr::from(6),
-            Fr::from(7),
-            Fr::from(8),
-        ];
+        let ts = vec![Fr::from(1), Fr::from(2), Fr::from(3), Fr::from(4)];
         let beta = Fr::from(7 as u64);
         let (f_vec, t_vec, c_vec) = compute_round_1(&fs, &ts, beta, 2);
         assert_eq!(
