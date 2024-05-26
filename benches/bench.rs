@@ -33,7 +33,7 @@ fn benchmark<F: Field, VLkup: VectorLookup<F>>(
         .unwrap();
     csv_writer.flush().unwrap();
 
-    let CAPPED_SIZE = 1 << 20;
+    let CAPPED_SIZE = 1 << 24;
     // Assume size vectors are passed in increasing order
     let max_size = std::cmp::min(
         vec_sizes.last().unwrap()
@@ -259,7 +259,7 @@ fn main() {
     );
     type NaiveLookupInst = NaiveLookup<Fr, PC, FS, Bls12_381>;
     benchmark::<Fr, NaiveLookupInst>(
-        "native_lookup".to_string(),
+        "naive_lookup".to_string(),
         &vec_sizes,
         &lookup_sizes,
         &table_sizes,
