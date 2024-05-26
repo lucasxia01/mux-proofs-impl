@@ -6,7 +6,9 @@ use std::{io::stdout, mem::size_of_val, string::String, time::Instant};
 
 use ark_ff::{Field, UniformRand};
 
-use mux_proofs_impl::{coset_lookup::CosetLookup, rng::SimpleHashFiatShamirRng, VectorLookup};
+use mux_proofs_impl::{
+    coset_lookup::CosetLookup, naive::NaiveLookup, rng::SimpleHashFiatShamirRng, VectorLookup,
+};
 
 fn benchmark<F: Field, VLkup: VectorLookup<F>>(
     scheme_name: String,
@@ -223,6 +225,13 @@ fn main() {
     type FS = SimpleHashFiatShamirRng<Blake2s, ChaChaRng>;
     type CosetLookupInst = CosetLookup<Fr, PC, FS>;
     benchmark::<Fr, CosetLookupInst>(
+        "coset_lookup".to_string(),
+        &vec_sizes,
+        &lookup_sizes,
+        &table_sizes,
+    );
+    type NaiveLookupInst = NaiveLookup<Fr, PC, FS, Bls12_381>;
+    benchmark::<Fr, NaiveLookupInst>(
         "coset_lookup".to_string(),
         &vec_sizes,
         &lookup_sizes,
