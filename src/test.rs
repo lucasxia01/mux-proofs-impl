@@ -1,3 +1,7 @@
+#![allow(unused_variables)]
+#![allow(non_snake_case)]
+#![allow(unused_imports)]
+
 mod tests {
     use std::mem::size_of_val;
 

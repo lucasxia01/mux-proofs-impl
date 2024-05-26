@@ -1,3 +1,7 @@
+#![allow(unused_variables)]
+#![allow(non_snake_case)]
+#![allow(unused_imports)]
+
 // For benchmark, run:
 // ``cargo bench --bench mux_proofs_benches --  [--vec_size <vec_size1>...][--lookup_size <lookup_size1>...][--table_size <table_size1>...]``
 
@@ -29,10 +33,13 @@ fn benchmark<F: Field, VLkup: VectorLookup<F>>(
         .unwrap();
     csv_writer.flush().unwrap();
 
+    let CAPPED_SIZE = 1 << 20;
     // Assume size vectors are passed in increasing order
-    let max_size = vec_sizes.last().unwrap()
-        * std::cmp::max(lookup_sizes.last().unwrap(), table_sizes.last().unwrap())
-        * 2;
+    let max_size = std::cmp::min(
+        vec_sizes.last().unwrap()
+            * std::cmp::max(lookup_sizes.last().unwrap(), table_sizes.last().unwrap()),
+        CAPPED_SIZE,
+    ) * 2;
     let rng = &mut ark_std::test_rng();
     let mut start = Instant::now();
     let srs = VLkup::universal_setup(max_size, rng).unwrap();
@@ -53,6 +60,12 @@ fn benchmark<F: Field, VLkup: VectorLookup<F>>(
     for vec_size in vec_sizes.iter() {
         for lookup_size in lookup_sizes.iter() {
             for table_size in table_sizes.iter() {
+                if *vec_size > CAPPED_SIZE / *lookup_size {
+                    continue;
+                }
+                if *vec_size > CAPPED_SIZE / *table_size {
+                    continue;
+                }
                 // Generate dummy lookup and table max sizes
                 let lookup_vals: Vec<F> = (0..*vec_size)
                     .cycle()
@@ -84,8 +97,22 @@ fn benchmark<F: Field, VLkup: VectorLookup<F>>(
 
                 // Commit
                 // TODO: Inefficient since lookup comm and table comm can be reused over the for loop
+                start = Instant::now();
                 let (lookup_comm, lookup_repr) =
                     VLkup::commit_lookup(&pk, lookup_vals.clone()).unwrap();
+                end = start.elapsed().as_millis();
+                csv_writer
+                    .write_record(&[
+                        scheme_name.clone(),
+                        "precommit".to_string(),
+                        vec_size.to_string(),
+                        lookup_size.to_string(),
+                        table_size.to_string(),
+                        end.to_string(),
+                    ])
+                    .unwrap();
+                csv_writer.flush().unwrap();
+
                 let (table_comm, table_repr) =
                     VLkup::commit_table(&pk, table_vals.clone()).unwrap();
 
@@ -169,7 +196,7 @@ fn main() {
                         next_arg = args.next();
                         'vec_size: while let Some(vec_arg) = next_arg.clone() {
                             match vec_arg.parse::<usize>() {
-                                Ok(vec_size) => vec_sizes.push(vec_size),
+                                Ok(vec_size) => vec_sizes.push(1 << vec_size),
                                 Err(_) => break 'vec_size,
                             }
                             next_arg = args.next();
@@ -179,7 +206,7 @@ fn main() {
                         next_arg = args.next();
                         'lookup_size: while let Some(lookup_arg) = next_arg.clone() {
                             match lookup_arg.parse::<usize>() {
-                                Ok(lookup_size) => lookup_sizes.push(lookup_size),
+                                Ok(lookup_size) => lookup_sizes.push(1 << lookup_size),
                                 Err(_) => break 'lookup_size,
                             }
                             next_arg = args.next();
@@ -189,7 +216,7 @@ fn main() {
                         next_arg = args.next();
                         'table_size: while let Some(table_arg) = next_arg.clone() {
                             match table_arg.parse::<usize>() {
-                                Ok(table_size) => table_sizes.push(table_size),
+                                Ok(table_size) => table_sizes.push(1 << table_size),
                                 Err(_) => break 'table_size,
                             }
                             next_arg = args.next();
@@ -232,7 +259,7 @@ fn main() {
     );
     type NaiveLookupInst = NaiveLookup<Fr, PC, FS, Bls12_381>;
     benchmark::<Fr, NaiveLookupInst>(
-        "coset_lookup".to_string(),
+        "native_lookup".to_string(),
         &vec_sizes,
         &lookup_sizes,
         &table_sizes,

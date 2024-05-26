@@ -1,4 +1,6 @@
+#![allow(unused_variables)]
 #![allow(non_snake_case)]
+#![allow(unused_imports)]
 use ark_poly::{univariate::DensePolynomial, Evaluations};
 use ark_poly::{EvaluationDomain, Polynomial, Radix2EvaluationDomain};
 
