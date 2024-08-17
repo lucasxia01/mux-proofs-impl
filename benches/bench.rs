@@ -9,10 +9,36 @@ use csv::Writer;
 use std::{io::stdout, mem::size_of_val, string::String, time::Instant};
 
 use ark_ff::{Field, UniformRand};
+use ark_std::rand::Rng;
 
 use mux_proofs_impl::{
     coset_lookup::CosetLookup, naive::NaiveLookup, rng::SimpleHashFiatShamirRng, VectorLookup,
 };
+
+// Generates n random values such that they sum up to total
+fn generate_random_frequencies<R: Rng>(n: usize, total: usize, rng: &mut R) -> Vec<u32> {
+    
+    // Generate `n-1` random points within the range [0, m)
+    let mut points: Vec<u32> = (0..n-1).map(|_| rng.gen_range(0..total) as u32).collect();
+    
+    // Sort the points
+    points.sort();
+    
+    // Initialize the vector of random values
+    let mut values = Vec::with_capacity(n);
+    
+    // Calculate the intervals between sorted points
+    let mut last_point = 0;
+    for &point in &points {
+        values.push(point - last_point);
+        last_point = point;
+    }
+    
+    // The last value is the interval between the last point and `m`
+    values.push(total as u32 - last_point);
+    
+    values
+}
 
 fn benchmark<F: Field, VLkup: VectorLookup<F>>(
     scheme_name: String,
@@ -56,7 +82,6 @@ fn benchmark<F: Field, VLkup: VectorLookup<F>>(
         .unwrap();
     csv_writer.flush().unwrap();
 
-    let dummy_value = F::rand(rng);
     for vec_size in vec_sizes.iter() {
         for lookup_size in lookup_sizes.iter() {
             for table_size in table_sizes.iter() {
@@ -65,19 +90,24 @@ fn benchmark<F: Field, VLkup: VectorLookup<F>>(
                 }
                 if *vec_size > CAPPED_SIZE / *table_size {
                     continue;
-                }
-                // Generate dummy lookup and table max sizes
-                let lookup_vals: Vec<F> = (0..*vec_size)
-                    .cycle()
-                    .map(|i| F::from(i as u64))
-                    .take(vec_size * lookup_size)
-                    .collect();
+                }                
+                // freqs is the frequency of each table subvector in the lookup vector
+                let freqs = generate_random_frequencies(*table_size, *lookup_size, rng);
 
                 let table_vals: Vec<F> = (0..*vec_size * table_size)
                     .cycle()
                     .map(|i| F::from(i as u64))
                     .take(vec_size * table_size)
                     .collect(); // TODO: make this unique
+                let mut lookup_vals: Vec<F> = vec![];
+                for i in 0..*table_size {
+                    for j in 0..freqs[i] {
+                        // generate the vector from i*vec_size to (i+1)*vec_size
+                        for k in 0..*vec_size {
+                            lookup_vals.push(F::from((i * *vec_size + k) as u64));
+                        }
+                    }
+                }
 
                 // Generate prover and verifier keys
                 start = Instant::now();
