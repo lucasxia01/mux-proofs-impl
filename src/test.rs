@@ -38,12 +38,12 @@ mod tests {
         let (pk, vk) =
             CosetLookupInst::index(&universal_srs, vector_size, lookup_size, table_size).unwrap();
 
-        let (f_comm_pair, f) = CosetLookupInst::commit_lookup(&pk, f_vals.clone()).unwrap();
-        let (t_comm_pair, t) = CosetLookupInst::commit_table(&pk, t_vals.clone()).unwrap();
+        let (f_comm_pair, f) = CosetLookupInst::commit_lookup(&pk, f_vals.clone(), rng).unwrap();
+        let (t_comm_pair, t) = CosetLookupInst::commit_table(&pk, t_vals.clone(), rng).unwrap();
 
         // Prove
         let proof =
-            CosetLookupInst::prove(&pk, &f_comm_pair, &t_comm_pair, f_vals, t_vals, f, t).unwrap();
+            CosetLookupInst::prove(&pk, &f_comm_pair, &t_comm_pair, f_vals, t_vals, f, t, rng).unwrap();
         println!("c comm size: {:?}", size_of_val(proof.c_comm.commitment()));
         println!("pc proof length: {:?}", proof.pc_proof.len());
         println!(

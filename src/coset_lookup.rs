@@ -235,11 +235,9 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             Err(Error::IndexTooLarge)?;
         }
 
-        let coeff_support = []; // TODO: figure this out
-                                // Marlin only needs degree 2 random polynomials
-        let supported_hiding_bound = 1; // TODO: figure this
+        let supported_hiding_bound = 3; // TODO: I think is probably the max hiding bound allowed, lower it if needed
         let (committer_key, verifier_key) =
-            PC::trim(&srs, size, supported_hiding_bound, Some(&coeff_support))
+            PC::trim(&srs, size, supported_hiding_bound, None)
                 .map_err(Error::from_pc_err)?;
         // println!(
         //     "lookup size: {}, table size: {}, vector size: {}",
@@ -269,15 +267,16 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
     fn commit_lookup(
         pk: &Self::ProverKey,
         f_vals: Vec<F>,
+        rng: Option<&mut dyn RngCore>
     ) -> Result<(Self::VectorCommitment, Self::VectorRepr), Self::Error> {
         let f_evals = convert_vals_to_evals_form(
             f_vals,
             pk.f_domain.size as usize,
             pk.coset_domain.size as usize,
         );
-        let f = LabeledPolynomial::new("f".to_string(), poly_from_evals(&f_evals), None, None);
+        let f = LabeledPolynomial::new("f".to_string(), poly_from_evals(&f_evals), None, 0);
         let f_comms =
-            PC::commit(&pk.committer_key, &[f.clone()], None).map_err(Error::from_pc_err)?;
+            PC::commit(&pk.committer_key, &[f.clone()], rng).map_err(Error::from_pc_err)?;
         Ok(((f_comms.0[0].clone(), f_comms.1[0].clone()), f))
     }
 
@@ -285,6 +284,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
     fn commit_table(
         pk: &Self::ProverKey,
         t_vals: Vec<F>,
+        rng: Option<&mut dyn RngCore>
     ) -> Result<(Self::VectorCommitment, Self::VectorRepr), Self::Error> {
         let t_evals = convert_vals_to_evals_form(
             t_vals,

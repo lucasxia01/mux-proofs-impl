@@ -307,6 +307,7 @@ where
     fn commit_lookup(
         pk: &Self::ProverKey,
         f_vals: Vec<F>,
+        rng: Option<&mut dyn RngCore>
     ) -> Result<(Self::VectorCommitment, Self::VectorRepr), Self::Error> {
         let fs_polys = compute_statement_polys(&f_vals, pk.vector_size, pk.V.clone());
         let labeledpolys = fs_polys
@@ -321,6 +322,7 @@ where
     fn commit_table(
         pk: &Self::ProverKey,
         t_vals: Vec<F>,
+        rng: Option<&mut dyn RngCore>
     ) -> Result<(Self::VectorCommitment, Self::VectorRepr), Self::Error> {
         let ts_polys = compute_statement_polys(&t_vals, pk.vector_size, pk.H.clone());
         let labeledpolys = ts_polys
