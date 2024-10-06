@@ -50,7 +50,7 @@ mod tests {
             "pc proof element size: {:?}",
             size_of_val(&proof.pc_proof[0].w)
         );
-        let result = CosetLookupInst::verify(&vk, &proof, &f_comm_pair, &t_comm_pair).unwrap();
+        let result = CosetLookupInst::verify(&vk, &proof, &f_comm_pair.0, &t_comm_pair.0).unwrap();
         return result;
     }
 

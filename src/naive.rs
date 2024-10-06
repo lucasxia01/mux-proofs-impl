@@ -246,7 +246,7 @@ where
 {
     comms: C,
     evals: ark_poly_commit::Evaluations<F, F>,
-    proof: P,
+    pc_proof: P,
     sum: F,
 }
 
@@ -262,10 +262,8 @@ where
     PC::VerifierKey: Clone,
 {
     type Error = PC::Error;
-    type VectorCommitment = (
-        Vec<LabeledCommitment<PC::Commitment>>,
-        Vec<<PC as PolynomialCommitment<F, DensePolynomial<F>>>::Randomness>,
-    );
+    type VectorCommitment = Vec<LabeledCommitment<PC::Commitment>>;
+    type VectorCommitmentRandomness = Vec<<PC as PolynomialCommitment<F, DensePolynomial<F>>>::Randomness>;
     type VectorRepr = ();
     type UniversalSRS = PC::UniversalParams;
     type ProverKey = NaivePK<F, PC::CommitterKey>;
@@ -308,7 +306,7 @@ where
         pk: &Self::ProverKey,
         f_vals: Vec<F>,
         zk_rng: &mut R,
-    ) -> Result<(Self::VectorCommitment, Self::VectorRepr), Self::Error> {
+    ) -> Result<((Self::VectorCommitment, Self::VectorCommitmentRandomness), Self::VectorRepr), Self::Error> {
         let fs_polys = compute_statement_polys(&f_vals, pk.vector_size, pk.V.clone());
         let labeledpolys = fs_polys
             .iter()
@@ -323,7 +321,7 @@ where
         pk: &Self::ProverKey,
         t_vals: Vec<F>,
         zk_rng: &mut R,
-    ) -> Result<(Self::VectorCommitment, Self::VectorRepr), Self::Error> {
+    ) -> Result<((Self::VectorCommitment, Self::VectorCommitmentRandomness), Self::VectorRepr), Self::Error> {
         let ts_polys = compute_statement_polys(&t_vals, pk.vector_size, pk.H.clone());
         let labeledpolys = ts_polys
             .iter()
@@ -336,8 +334,8 @@ where
 
     fn prove<R: RngCore>(
         pk: &Self::ProverKey,
-        _f_comm: &Self::VectorCommitment,
-        _t_comm: &Self::VectorCommitment,
+        _f_comm: &(Self::VectorCommitment, Self::VectorCommitmentRandomness),
+        _t_comm: &(Self::VectorCommitment, Self::VectorCommitmentRandomness),
         f_vals: Vec<F>,
         t_vals: Vec<F>,
         _f: Self::VectorRepr,
@@ -427,9 +425,9 @@ where
         )?;
 
         let proof = Self::Proof {
-            comms,
+            comms: comms.0,
             evals: evaluations,
-            proof: batch_proof,
+            pc_proof: batch_proof,
             sum,
         };
         Ok(proof)
@@ -449,8 +447,8 @@ where
             .take(m)
             .collect::<Vec<F>>();
 
-        let a = lc_comms::<F, E, PC>(&f_comm.0, &beta_pows);
-        let b = lc_comms::<F, E, PC>(&t_comm.0, &beta_pows);
+        let a = lc_comms::<F, E, PC>(&f_comm, &beta_pows);
+        let b = lc_comms::<F, E, PC>(&t_comm, &beta_pows);
         assert!(std::mem::size_of_val(&a) + 5000 >= std::mem::size_of_val(&b));
 
         let alpha = F::rand(&mut fs_rng);
@@ -461,10 +459,10 @@ where
         let query_set = Self::get_query_set(z, z * vk.V.group_gen, z * vk.H.group_gen);
         let mut result = PC::batch_check(
             &vk.pc_vk,
-            &proof.comms.0,
+            &proof.comms,
             &query_set,
             &proof.evals,
-            &proof.proof,
+            &proof.pc_proof,
             batch_chall,
             &mut fs_rng,
         )?;
@@ -597,10 +595,10 @@ mod tests {
         let table_size = t_evals.len() / vector_size;
         let srs = NaiveInst::universal_setup(16, rng).unwrap();
         let (pk, vk) = NaiveInst::index(&srs, vector_size, lookup_size, table_size).unwrap();
-        let (f_comm, _) = NaiveInst::commit_lookup(&pk, f_evals.clone(), rng).unwrap();
-        let (t_comm, _) = NaiveInst::commit_table(&pk, t_evals.clone(), rng).unwrap();
-        let proof = NaiveInst::prove(&pk, &f_comm, &t_comm, f_evals, t_evals, (), (), rng).unwrap();
-        let result = NaiveInst::verify(&vk, &proof, &f_comm, &t_comm).unwrap();
+        let (f_comm_pair, _) = NaiveInst::commit_lookup(&pk, f_evals.clone(), rng).unwrap();
+        let (t_comm_pair, _) = NaiveInst::commit_table(&pk, t_evals.clone(), rng).unwrap();
+        let proof = NaiveInst::prove(&pk, &f_comm_pair, &t_comm_pair, f_evals, t_evals, (), (), rng).unwrap();
+        let result = NaiveInst::verify(&vk, &proof, &f_comm_pair.0, &t_comm_pair.0).unwrap();
         assert!(result);
     }
 }

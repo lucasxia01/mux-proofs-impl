@@ -18,6 +18,7 @@ pub mod test;
 pub trait VectorLookup<F: Field> {
     type Error: Debug;
     type VectorCommitment: Clone;
+    type VectorCommitmentRandomness: Clone;
     type VectorRepr: Clone;
     type UniversalSRS: Clone;
     type ProverKey;
@@ -44,20 +45,20 @@ pub trait VectorLookup<F: Field> {
         pk: &Self::ProverKey,
         f_vals: Vec<F>,
         rng: &mut R,
-    ) -> Result<(Self::VectorCommitment, Self::VectorRepr), Self::Error>;
+    ) -> Result<((Self::VectorCommitment, Self::VectorCommitmentRandomness), Self::VectorRepr), Self::Error>;
 
     /// Given fields values and prover key, generate vector commitment and representation for table
     fn commit_table<R: RngCore>(
         pk: &Self::ProverKey,
         t_vals: Vec<F>,
         rng:  &mut R,
-    ) -> Result<(Self::VectorCommitment, Self::VectorRepr), Self::Error>;
+    ) -> Result<((Self::VectorCommitment, Self::VectorCommitmentRandomness), Self::VectorRepr), Self::Error>;
 
     /// Perform vector lookup and produce proof
     fn prove<R: RngCore>(
         pk: &Self::ProverKey,
-        f_comm: &Self::VectorCommitment,
-        t_comm: &Self::VectorCommitment,
+        f_comm: &(Self::VectorCommitment, Self::VectorCommitmentRandomness),
+        t_comm: &(Self::VectorCommitment, Self::VectorCommitmentRandomness),
         f_vals: Vec<F>,
         t_vals: Vec<F>,
         f: Self::VectorRepr,

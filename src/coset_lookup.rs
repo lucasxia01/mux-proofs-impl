@@ -192,10 +192,8 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
     VectorLookup<F> for CosetLookup<F, PC, FS>
 {
     type Error = Error<PC::Error>;
-    type VectorCommitment = (
-        LabeledCommitment<PC::Commitment>,
-        <PC as PolynomialCommitment<F, DensePolynomial<F>>>::Randomness,
-    );
+    type VectorCommitment = LabeledCommitment<PC::Commitment>;
+    type VectorCommitmentRandomness = <PC as PolynomialCommitment<F, DensePolynomial<F>>>::Randomness;
     type VectorRepr = LabeledPolynomial<F, DensePolynomial<F>>;
     type UniversalSRS = UniversalSRS<F, PC>;
     type ProverKey = ProverKey<F, PC>;
@@ -268,7 +266,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         pk: &Self::ProverKey,
         f_vals: Vec<F>,
         zk_rng: &mut R
-    ) -> Result<(Self::VectorCommitment, Self::VectorRepr), Self::Error> {
+    ) -> Result<((Self::VectorCommitment, Self::VectorCommitmentRandomness), Self::VectorRepr), Self::Error> {
         let f_evals = convert_vals_to_evals_form(
             f_vals,
             pk.f_domain.size as usize,
@@ -285,7 +283,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         pk: &Self::ProverKey,
         t_vals: Vec<F>,
         zk_rng: &mut R
-    ) -> Result<(Self::VectorCommitment, Self::VectorRepr), Self::Error> {
+    ) -> Result<((Self::VectorCommitment, Self::VectorCommitmentRandomness), Self::VectorRepr), Self::Error> {
         let t_evals = convert_vals_to_evals_form(
             t_vals,
             pk.t_domain.size as usize,
@@ -301,8 +299,8 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
     // Inputs: Prover key, (vector commitment, table commitment), (vector elements, table elements)
     fn prove<R: RngCore>(
         pk: &Self::ProverKey,
-        f_comm_pair: &Self::VectorCommitment,
-        t_comm_pair: &Self::VectorCommitment,
+        f_comm_pair: &(Self::VectorCommitment, Self::VectorCommitmentRandomness),
+        t_comm_pair: &(Self::VectorCommitment, Self::VectorCommitmentRandomness),
         f_vals: Vec<F>,
         t_vals: Vec<F>,
         f: Self::VectorRepr,
@@ -316,10 +314,8 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         let f_domain_size = f_vals.len();
         let t_domain_size = t_vals.len();
         let coset_domain_size = pk.coset_domain.size as usize;
-        // assert_eq!(f_vals.len(), f_domain_size);
-        // assert_eq!(t_vals.len(), t_domain_size);
-        // assert_eq!(f_domain_size % coset_domain_size, 0);
-        // assert_eq!(t_domain_size % coset_domain_size, 0);
+        assert_eq!(f_domain_size % coset_domain_size, 0);
+        assert_eq!(t_domain_size % coset_domain_size, 0);
         let f_domain_num_cosets = f_domain_size / coset_domain_size;
         let t_domain_num_cosets = t_domain_size / coset_domain_size;
         // println!("f_domain_size: {}", f_domain_size);
@@ -414,6 +410,8 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             PC::commit(&pk.committer_key, vec![&c], Some(zk_rng)).map_err(Error::from_pc_err)?; // TODO: see if we can remove clone here
         let c_comm = c_comms[0].clone();
         let c_comm_rand = c_comm_rands[0].clone();
+
+        // fs_rng.absort(&to_bytes![c_comm].unwrap());
 
         end = start.elapsed().as_millis();
         println!("Degree of c polynomial: {}", c.degree());
@@ -1094,15 +1092,14 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
     fn verify(
         vk: &Self::VerifierKey,
         proof: &Self::Proof,
-        f_comm_pair: &Self::VectorCommitment,
-        t_comm_pair: &Self::VectorCommitment,
+        f_comm: &Self::VectorCommitment,
+        t_comm: &Self::VectorCommitment,
     ) -> Result<bool, Self::Error> {
         // Fiat-shamir setup
         // TODO: fix this initialization to include all public inputs
         let mut fs_rng = FS::initialize(&to_bytes![PROTOCOL_NAME].unwrap());
 
-        let f_comm = f_comm_pair.0.clone();
-        let t_comm = t_comm_pair.0.clone();
+
         // Compute challenges alpha and beta
         let alpha = F::rand(&mut fs_rng);
         let beta = F::rand(&mut fs_rng);
