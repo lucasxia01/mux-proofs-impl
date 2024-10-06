@@ -311,6 +311,8 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         // TODO: fix this initialization to include all public inputs
         let mut fs_rng = FS::initialize(&to_bytes![PROTOCOL_NAME].unwrap());
 
+        fs_rng.absorb(&to_bytes![f_comm_pair.0, t_comm_pair.0].unwrap());
+
         let f_domain_size = f_vals.len();
         let t_domain_size = t_vals.len();
         let coset_domain_size = pk.coset_domain.size as usize;
@@ -411,7 +413,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         let c_comm = c_comms[0].clone();
         let c_comm_rand = c_comm_rands[0].clone();
 
-        // fs_rng.absort(&to_bytes![c_comm].unwrap());
+        fs_rng.absorb(&to_bytes![c_comm].unwrap());
 
         end = start.elapsed().as_millis();
         println!("Degree of c polynomial: {}", c.degree());
@@ -515,6 +517,8 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         let idx_t_comm = idx_comms[1].clone();
         let idx_t_comm_rand = idx_comm_rands[1].clone();
 
+        fs_rng.absorb(&to_bytes![idx_f_comm, idx_t_comm].unwrap());
+
         end = start.elapsed().as_millis();
         println!(
             "degree of idx_f {} and idx_t {}",
@@ -577,6 +581,8 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         let s_f_comm_rand = s_comm_rands[0].clone();
         let s_t_comm = s_comms[1].clone();
         let s_t_comm_rand = s_comm_rands[1].clone();
+
+        fs_rng.absorb(&to_bytes![s_f_comm, s_t_comm].unwrap());
 
         end = start.elapsed().as_millis();
         println!("Degree of s_f and s_t: {}, {}", s_f.degree(), s_t.degree());
@@ -650,6 +656,8 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         let b_t_comm = b_comms[1].clone();
         let b_t_comm_rand = b_comm_rands[1].clone();
 
+        fs_rng.absorb(&to_bytes![b_f_comm, b_t_comm].unwrap());
+
         end = start.elapsed().as_millis();
         println!("Degree of b_f and b_t: {}, {}", b_f.degree(), b_t.degree());
         println!("Time elapsed for Step 5 of b polys: {} ms", end);
@@ -686,6 +694,8 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         let u_f_comm_rand = u_comm_rands[0].clone();
         let u_t_comm = u_comms[1].clone();
         let u_t_comm_rand = u_comm_rands[1].clone();
+
+        fs_rng.absorb(&to_bytes![u_f_comm, u_t_comm].unwrap());
 
         end = start.elapsed().as_millis();
         println!("Time elapsed for Step 6 of u polys: {} ms", end);
@@ -734,6 +744,8 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         let T_f_comm_rand = T_comm_rands[0].clone();
         let T_t_comm = T_comms[1].clone();
         let T_t_comm_rand = T_comm_rands[1].clone();
+
+        fs_rng.absorb(&to_bytes![T_f_comm, T_t_comm].unwrap());
 
         end = start.elapsed().as_millis();
         println!("Time elapsed for Step 7 of T polys: {} ms", end);
@@ -920,6 +932,8 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         let quotient_H_f_comm_rand = quotient_comm_rands[1].clone();
         let quotient_H_t_comm_rand = quotient_comm_rands[2].clone();
 
+        fs_rng.absorb(&to_bytes![quotient_V_comm, quotient_H_f_comm, quotient_H_t_comm].unwrap());
+
         end = start.elapsed().as_millis();
         println!(
             "degree of quotient_V: {}, quotient_H_f: {}, quotient_H_t: {}",
@@ -1099,17 +1113,27 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         // TODO: fix this initialization to include all public inputs
         let mut fs_rng = FS::initialize(&to_bytes![PROTOCOL_NAME].unwrap());
 
+        fs_rng.absorb(&to_bytes![f_comm, t_comm].unwrap());
+        fs_rng.absorb(&to_bytes![proof.c_comm].unwrap());
 
         // Compute challenges alpha and beta
         let alpha = F::rand(&mut fs_rng);
         let beta = F::rand(&mut fs_rng);
 
+        fs_rng.absorb(&to_bytes![proof.idx_f_comm, proof.idx_t_comm].unwrap());
+        fs_rng.absorb(&to_bytes![proof.s_f_comm, proof.s_t_comm].unwrap());
+        fs_rng.absorb(&to_bytes![proof.b_f_comm, proof.b_t_comm].unwrap());
+        fs_rng.absorb(&to_bytes![proof.u_f_comm, proof.u_t_comm].unwrap());
+        fs_rng.absorb(&to_bytes![proof.T_f_comm, proof.T_t_comm].unwrap());
+        
         // Get batching challenge
         let batching_challenge = F::rand(&mut fs_rng);
         let mut batching_challenge_powers = vec![F::one(); MAX_ZERO_TEST_LENGTH];
         for i in 1..MAX_ZERO_TEST_LENGTH {
             batching_challenge_powers[i] = batching_challenge_powers[i - 1] * batching_challenge;
         }
+
+        fs_rng.absorb(&to_bytes![proof.quotient_V_comm, proof.quotient_H_f_comm, proof.quotient_H_t_comm].unwrap());
 
         // Get the verifier query challenge
         let pt = F::rand(&mut fs_rng);
