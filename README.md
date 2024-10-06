@@ -1,3 +1,24 @@
+# MuxProofs Coset Lookup
+
+Rust implementation of the Coset Lookup protocol from MuxProofs.
+
+**AsiaCrypt 2024** Zijing Di, Lucas Xia, Wilson Nguyen, Nirvan Tyagi. MUXProofs: Succinct Arguments for Machine Computation from Tuple Lookups. 
+
+## Tests and Benchmarks
+
+The `muxproofs` packages come with a suite of tests and benchmarks.
+
+### Running Tests
+To run the tests:
+```
+cargo test
+```
+### Running Benchmarks
+To run a benchmark:
+```
+cargo bench --bench name_of_benchmark -- [--optional-arg arg1 arg2...]
+```
+## Reproducing Benchmarks
 
 To generate the values used for the plots in the paper, you can run:
 ```
