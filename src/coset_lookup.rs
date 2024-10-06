@@ -264,42 +264,42 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
     }
 
     /// Given fields values and prover key, generate vector commitment and representation for lookup
-    fn commit_lookup(
+    fn commit_lookup<R: RngCore>(
         pk: &Self::ProverKey,
         f_vals: Vec<F>,
-        rng: Option<&mut dyn RngCore>
+        zk_rng: &mut R
     ) -> Result<(Self::VectorCommitment, Self::VectorRepr), Self::Error> {
         let f_evals = convert_vals_to_evals_form(
             f_vals,
             pk.f_domain.size as usize,
             pk.coset_domain.size as usize,
         );
-        let f = LabeledPolynomial::new("f".to_string(), poly_from_evals(&f_evals), None, 0);
+        let f = LabeledPolynomial::new("f".to_string(), poly_from_evals(&f_evals), None, Some(1));
         let f_comms =
-            PC::commit(&pk.committer_key, &[f.clone()], rng).map_err(Error::from_pc_err)?;
+            PC::commit(&pk.committer_key, &[f.clone()], Some(zk_rng)).map_err(Error::from_pc_err)?; // TODO: see if we can remove clone here.rng).map_err(Error::from_pc_err)?;
         Ok(((f_comms.0[0].clone(), f_comms.1[0].clone()), f))
     }
 
     /// Given fields values and prover key, generate vector commitment and representation for table
-    fn commit_table(
+    fn commit_table<R: RngCore>(
         pk: &Self::ProverKey,
         t_vals: Vec<F>,
-        rng: Option<&mut dyn RngCore>
+        zk_rng: &mut R
     ) -> Result<(Self::VectorCommitment, Self::VectorRepr), Self::Error> {
         let t_evals = convert_vals_to_evals_form(
             t_vals,
             pk.t_domain.size as usize,
             pk.coset_domain.size as usize,
         );
-        let t = LabeledPolynomial::new("t".to_string(), poly_from_evals(&t_evals), None, None);
+        let t = LabeledPolynomial::new("t".to_string(), poly_from_evals(&t_evals), None, Some(1));
         let t_comms =
-            PC::commit(&pk.committer_key, &[t.clone()], None).map_err(Error::from_pc_err)?;
+            PC::commit(&pk.committer_key, &[t.clone()], Some(zk_rng)).map_err(Error::from_pc_err)?;
         Ok(((t_comms.0[0].clone(), t_comms.1[0].clone()), t))
     }
 
     // Prove function
     // Inputs: Prover key, (vector commitment, table commitment), (vector elements, table elements)
-    fn prove(
+    fn prove<R: RngCore>(
         pk: &Self::ProverKey,
         f_comm_pair: &Self::VectorCommitment,
         t_comm_pair: &Self::VectorCommitment,
@@ -307,6 +307,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         t_vals: Vec<F>,
         f: Self::VectorRepr,
         t: Self::VectorRepr,
+        zk_rng: &mut R
     ) -> Result<Self::Proof, Self::Error> {
         let mut start = Instant::now();
         // TODO: fix this initialization to include all public inputs
@@ -397,7 +398,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         // Step 1.b: ZeroTest to should that c(\gammaX) = c(X)
         // Commit to c(X) and the quotient polynomial c_quotient(X) = (c(X) - c(\gammaX))/t_vanishing(X)
         // Want to prove that c(X) - c(\gammaX) = 0
-        let c = LabeledPolynomial::new("c".to_string(), poly_from_evals(&c_evals), None, None);
+        let c = LabeledPolynomial::new("c".to_string(), poly_from_evals(&c_evals), None, Some(2));
         // rotate c_evals by gamma, which is t_domain_num_cosets
         c_evals.rotate_left(t_domain_num_cosets); // TODO: double check this, and investigate the complexity of rotate_left
                                                   // println!("Rotated c_evals: {:?}", c_evals);
@@ -410,7 +411,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         c_evals.rotate_right(t_domain_num_cosets); // undo the rotation
 
         let (c_comms, c_comm_rands) =
-            PC::commit(&pk.committer_key, vec![&c], None).map_err(Error::from_pc_err)?;
+            PC::commit(&pk.committer_key, vec![&c], Some(zk_rng)).map_err(Error::from_pc_err)?; // TODO: see if we can remove clone here
         let c_comm = c_comms[0].clone();
         let c_comm_rand = c_comm_rands[0].clone();
 
@@ -453,7 +454,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             "idx_f".to_string(),
             poly_from_evals(&idx_f_evals),
             None,
-            None,
+            Some(3),
         );
         idx_f_evals.rotate_left(1);
         let idx_f_rotated_omega = LabeledPolynomial::new(
@@ -483,7 +484,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             "idx_t".to_string(),
             poly_from_evals(&idx_t_evals),
             None,
-            None,
+            Some(3),
         );
         idx_t_evals.rotate_left(1);
         let idx_t_rotated_omega = LabeledPolynomial::new(
@@ -510,7 +511,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         start = Instant::now();
         // Commit to the f and t indexing polynomials and the quotient polynomials
         let (idx_comms, idx_comm_rands) =
-            PC::commit(&pk.committer_key, vec![&idx_f, &idx_t], None).unwrap();
+            PC::commit(&pk.committer_key, vec![&idx_f, &idx_t], Some(zk_rng)).unwrap();
         let idx_f_comm = idx_comms[0].clone();
         let idx_f_comm_rand = idx_comm_rands[0].clone();
         let idx_t_comm = idx_comms[1].clone();
@@ -541,7 +542,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             }
         }
         let s_f =
-            LabeledPolynomial::new("s_f".to_string(), poly_from_evals(&s_f_evals), None, None);
+            LabeledPolynomial::new("s_f".to_string(), poly_from_evals(&s_f_evals), None, Some(2));
         s_f_evals.rotate_left(f_domain_num_cosets);
         let s_f_rotated_gamma = LabeledPolynomial::new(
             "s_f_rotated_gamma".to_string(),
@@ -562,7 +563,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             }
         }
         let s_t =
-            LabeledPolynomial::new("s_t".to_string(), poly_from_evals(&s_t_evals), None, None);
+            LabeledPolynomial::new("s_t".to_string(), poly_from_evals(&s_t_evals), None, Some(2));
         s_t_evals.rotate_left(t_domain_num_cosets);
         let s_t_rotated_gamma = LabeledPolynomial::new(
             "s_t_rotated_gamma".to_string(),
@@ -573,7 +574,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         s_t_evals.rotate_right(t_domain_num_cosets); // undo the rotation
 
         let (s_comms, s_comm_rands) =
-            PC::commit(&pk.committer_key, vec![&s_f, &s_t], None).unwrap();
+            PC::commit(&pk.committer_key, vec![&s_f, &s_t], Some(zk_rng)).unwrap();
         let s_f_comm = s_comms[0].clone();
         let s_f_comm_rand = s_comm_rands[0].clone();
         let s_t_comm = s_comms[1].clone();
@@ -596,7 +597,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             }
         }
         let b_f =
-            LabeledPolynomial::new("b_f".to_string(), poly_from_evals(&b_f_evals), None, None);
+            LabeledPolynomial::new("b_f".to_string(), poly_from_evals(&b_f_evals), None, Some(2));
         b_f_evals.rotate_left(f_domain_num_cosets);
         let b_f_rotated_gamma = LabeledPolynomial::new(
             "b_f_rotated_gamma".to_string(),
@@ -625,7 +626,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             }
         }
         let b_t =
-            LabeledPolynomial::new("b_t".to_string(), poly_from_evals(&b_t_evals), None, None);
+            LabeledPolynomial::new("b_t".to_string(), poly_from_evals(&b_t_evals), None, Some(2));
         b_t_evals.rotate_left(t_domain_num_cosets);
         let b_t_rotated_gamma = LabeledPolynomial::new(
             "b_t_rotated_gamma".to_string(),
@@ -645,7 +646,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         );
 
         let (b_comms, b_comm_rands) =
-            PC::commit(&pk.committer_key, vec![&b_f, &b_t], None).unwrap();
+            PC::commit(&pk.committer_key, vec![&b_f, &b_t], Some(zk_rng)).unwrap();
         let b_f_comm = b_comms[0].clone();
         let b_f_comm_rand = b_comm_rands[0].clone();
         let b_t_comm = b_comms[1].clone();
@@ -668,7 +669,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             }
         }
         let u_f =
-            LabeledPolynomial::new("u_f".to_string(), poly_from_evals(&u_f_evals), None, None);
+            LabeledPolynomial::new("u_f".to_string(), poly_from_evals(&u_f_evals), None, Some(1));
 
         let mut u_t_denoms: Vec<F> = s_t_evals.iter().map(|&x| alpha - x).collect();
         batch_inversion(&mut u_t_denoms);
@@ -679,10 +680,10 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             }
         }
         let u_t =
-            LabeledPolynomial::new("u_t".to_string(), poly_from_evals(&u_t_evals), None, None);
+            LabeledPolynomial::new("u_t".to_string(), poly_from_evals(&u_t_evals), None, Some(1));
 
         let (u_comms, u_comm_rands) =
-            PC::commit(&pk.committer_key, vec![&u_f, &u_t], None).unwrap();
+            PC::commit(&pk.committer_key, vec![&u_f, &u_t], Some(zk_rng)).unwrap();
         let u_f_comm = u_comms[0].clone();
         let u_f_comm_rand = u_comm_rands[0].clone();
         let u_t_comm = u_comms[1].clone();
@@ -702,7 +703,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         }
 
         let T_f =
-            LabeledPolynomial::new("T_f".to_string(), poly_from_evals(&T_f_evals), None, None);
+            LabeledPolynomial::new("T_f".to_string(), poly_from_evals(&T_f_evals), None, Some(2));
         T_f_evals.rotate_left(1);
         let T_f_rotated_omega = LabeledPolynomial::new(
             "T_f_rotated_omega".to_string(),
@@ -719,7 +720,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             // println!("T_t_evals[{}]: {}", i, T_t_evals[i]);
         }
         let T_t =
-            LabeledPolynomial::new("T_t".to_string(), poly_from_evals(&T_t_evals), None, None);
+            LabeledPolynomial::new("T_t".to_string(), poly_from_evals(&T_t_evals), None, Some(2));
         T_t_evals.rotate_left(1);
         let T_t_rotated_omega = LabeledPolynomial::new(
             "T_t_rotated_omega".to_string(),
@@ -730,7 +731,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         T_t_evals.rotate_right(1); // undo the rotation
 
         let (T_comms, T_comm_rands) =
-            PC::commit(&pk.committer_key, vec![&T_f, &T_t], None).unwrap();
+            PC::commit(&pk.committer_key, vec![&T_f, &T_t], Some(zk_rng)).unwrap();
         let T_f_comm = T_comms[0].clone();
         let T_f_comm_rand = T_comm_rands[0].clone();
         let T_t_comm = T_comms[1].clone();
@@ -899,11 +900,11 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         // );
 
         let quotient_V_labeled =
-            LabeledPolynomial::new("quotient_V".to_string(), quotient_V, None, None);
+            LabeledPolynomial::new("quotient_V".to_string(), quotient_V, None, Some(1));
         let quotient_H_f_labeled =
-            LabeledPolynomial::new("quotient_H_f".to_string(), quotient_H_f, None, None);
+            LabeledPolynomial::new("quotient_H_f".to_string(), quotient_H_f, None, Some(1));
         let quotient_H_t_labeled =
-            LabeledPolynomial::new("quotient_H_t".to_string(), quotient_H_t, None, None);
+            LabeledPolynomial::new("quotient_H_t".to_string(), quotient_H_t, None, Some(1));
         let (quotient_comms, quotient_comm_rands) = PC::commit(
             &pk.committer_key,
             vec![
@@ -911,7 +912,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
                 &quotient_H_f_labeled,
                 &quotient_H_t_labeled,
             ],
-            None,
+            Some(zk_rng),
         )
         .unwrap();
         let quotient_V_comm = quotient_comms[0].clone();

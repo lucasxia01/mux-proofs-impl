@@ -304,10 +304,10 @@ where
         ))
     }
 
-    fn commit_lookup(
+    fn commit_lookup<R: RngCore>(
         pk: &Self::ProverKey,
         f_vals: Vec<F>,
-        rng: Option<&mut dyn RngCore>
+        rng: &mut R,
     ) -> Result<(Self::VectorCommitment, Self::VectorRepr), Self::Error> {
         let fs_polys = compute_statement_polys(&f_vals, pk.vector_size, pk.V.clone());
         let labeledpolys = fs_polys
@@ -319,10 +319,10 @@ where
         Ok((comms, ()))
     }
 
-    fn commit_table(
+    fn commit_table<R: RngCore>(
         pk: &Self::ProverKey,
         t_vals: Vec<F>,
-        rng: Option<&mut dyn RngCore>
+        rng: &mut R,
     ) -> Result<(Self::VectorCommitment, Self::VectorRepr), Self::Error> {
         let ts_polys = compute_statement_polys(&t_vals, pk.vector_size, pk.H.clone());
         let labeledpolys = ts_polys
@@ -334,7 +334,7 @@ where
         Ok((comms, ()))
     }
 
-    fn prove(
+    fn prove<R: RngCore>(
         pk: &Self::ProverKey,
         _f_comm: &Self::VectorCommitment,
         _t_comm: &Self::VectorCommitment,
@@ -342,6 +342,7 @@ where
         t_vals: Vec<F>,
         _f: Self::VectorRepr,
         _t: Self::VectorRepr,
+        rng: &mut R,
     ) -> Result<Self::Proof, Self::Error> {
         let mut fs_rng = FS::initialize(b"naiveLC");
         let beta = F::rand(&mut fs_rng);
@@ -590,14 +591,15 @@ mod tests {
             Fr::from(7),
             Fr::from(8),
         ];
+        let rng = &mut ark_std::test_rng();
         let vector_size = 4;
         let lookup_size = f_evals.len() / vector_size;
         let table_size = t_evals.len() / vector_size;
-        let srs = NaiveInst::universal_setup(16, &mut ark_std::test_rng()).unwrap();
+        let srs = NaiveInst::universal_setup(16, rng).unwrap();
         let (pk, vk) = NaiveInst::index(&srs, vector_size, lookup_size, table_size).unwrap();
-        let (f_comm, _) = NaiveInst::commit_lookup(&pk, f_evals.clone()).unwrap();
-        let (t_comm, _) = NaiveInst::commit_table(&pk, t_evals.clone()).unwrap();
-        let proof = NaiveInst::prove(&pk, &f_comm, &t_comm, f_evals, t_evals, (), ()).unwrap();
+        let (f_comm, _) = NaiveInst::commit_lookup(&pk, f_evals.clone(), rng).unwrap();
+        let (t_comm, _) = NaiveInst::commit_table(&pk, t_evals.clone(), rng).unwrap();
+        let proof = NaiveInst::prove(&pk, &f_comm, &t_comm, f_evals, t_evals, (), (), rng).unwrap();
         let result = NaiveInst::verify(&vk, &proof, &f_comm, &t_comm).unwrap();
         assert!(result);
     }

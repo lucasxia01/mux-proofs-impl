@@ -40,21 +40,21 @@ pub trait VectorLookup<F: Field> {
     ) -> Result<(Self::ProverKey, Self::VerifierKey), Self::Error>;
 
     /// Given fields values and prover key, generate vector commitment and representation for lookup
-    fn commit_lookup(
+    fn commit_lookup<R: RngCore>(
         pk: &Self::ProverKey,
         f_vals: Vec<F>,
-        rng: Option<&mut dyn RngCore>,
+        rng: &mut R,
     ) -> Result<(Self::VectorCommitment, Self::VectorRepr), Self::Error>;
 
     /// Given fields values and prover key, generate vector commitment and representation for table
-    fn commit_table(
+    fn commit_table<R: RngCore>(
         pk: &Self::ProverKey,
         t_vals: Vec<F>,
-        rng: Option<&mut dyn RngCore>,
+        rng:  &mut R,
     ) -> Result<(Self::VectorCommitment, Self::VectorRepr), Self::Error>;
 
     /// Perform vector lookup and produce proof
-    fn prove(
+    fn prove<R: RngCore>(
         pk: &Self::ProverKey,
         f_comm: &Self::VectorCommitment,
         t_comm: &Self::VectorCommitment,
@@ -62,7 +62,7 @@ pub trait VectorLookup<F: Field> {
         t_vals: Vec<F>,
         f: Self::VectorRepr,
         t: Self::VectorRepr,
-        rng: Option<&mut dyn RngCore>,
+        rng:  &mut R,
     ) -> Result<Self::Proof, Self::Error>;
 
     /// Perform verification of vector lookup proof
