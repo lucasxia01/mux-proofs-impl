@@ -287,7 +287,7 @@ where
         table_size: usize,
     ) -> Result<(Self::ProverKey, Self::VerifierKey), Self::Error> {
         let trim_size = std::cmp::max(lookup_size, table_size) * vector_size;
-        let (pk, vk) = PC::trim(srs, trim_size, 1, None)?;
+        let (pk, vk) = PC::trim(srs, trim_size, 2, None)?;
         Ok((
             NaivePK {
                 vector_size,
@@ -307,30 +307,30 @@ where
     fn commit_lookup<R: RngCore>(
         pk: &Self::ProverKey,
         f_vals: Vec<F>,
-        rng: &mut R,
+        zk_rng: &mut R,
     ) -> Result<(Self::VectorCommitment, Self::VectorRepr), Self::Error> {
         let fs_polys = compute_statement_polys(&f_vals, pk.vector_size, pk.V.clone());
         let labeledpolys = fs_polys
             .iter()
             .enumerate()
-            .map(|(i, f)| LabeledPolynomial::new(format!("f{}", i), f.clone(), None, None))
+            .map(|(i, f)| LabeledPolynomial::new(format!("f{}", i), f.clone(), None, Some(1)))
             .collect::<Vec<_>>();
-        let comms = PC::commit(&pk.pc_pk, &labeledpolys, None)?;
+        let comms = PC::commit(&pk.pc_pk, &labeledpolys, Some(zk_rng))?;
         Ok((comms, ()))
     }
 
     fn commit_table<R: RngCore>(
         pk: &Self::ProverKey,
         t_vals: Vec<F>,
-        rng: &mut R,
+        zk_rng: &mut R,
     ) -> Result<(Self::VectorCommitment, Self::VectorRepr), Self::Error> {
         let ts_polys = compute_statement_polys(&t_vals, pk.vector_size, pk.H.clone());
         let labeledpolys = ts_polys
             .iter()
             .enumerate()
-            .map(|(i, t)| LabeledPolynomial::new(format!("t{}", i), t.clone(), None, None))
+            .map(|(i, t)| LabeledPolynomial::new(format!("t{}", i), t.clone(), None, Some(1)))
             .collect::<Vec<_>>();
-        let comms = PC::commit(&pk.pc_pk, &labeledpolys, None)?;
+        let comms = PC::commit(&pk.pc_pk, &labeledpolys, Some(zk_rng))?;
         Ok((comms, ()))
     }
 
@@ -342,25 +342,25 @@ where
         t_vals: Vec<F>,
         _f: Self::VectorRepr,
         _t: Self::VectorRepr,
-        rng: &mut R,
+        zk_rng: &mut R,
     ) -> Result<Self::Proof, Self::Error> {
         let mut fs_rng = FS::initialize(b"naiveLC");
         let beta = F::rand(&mut fs_rng);
         let (f_vec, t_vec, c_vec) = compute_round_1(&f_vals[..], &t_vals[..], beta, pk.vector_size);
 
         let (f, t, c) = compute_round_2_polys(&f_vec, &t_vec, &c_vec, pk.V.clone(), pk.H.clone());
-        let f_labeled = LabeledPolynomial::new("f".to_string(), f.clone(), None, None);
-        let t_labeled = LabeledPolynomial::new("t".to_string(), t.clone(), None, None);
-        let c_labeled = LabeledPolynomial::new("c".to_string(), c.clone(), None, None);
+        let f_labeled = LabeledPolynomial::new("f".to_string(), f.clone(), None, Some(1));
+        let t_labeled = LabeledPolynomial::new("t".to_string(), t.clone(), None, Some(1));
+        let c_labeled = LabeledPolynomial::new("c".to_string(), c.clone(), None, Some(1));
 
         let alpha = F::rand(&mut fs_rng);
 
         let (f_hab, t_hab, s_f, s_t, s_f_rot, s_t_rot, sum) =
             compute_round_3_polys(&f_vec, &t_vec, &c_vec, alpha, pk.V.clone(), pk.H.clone());
-        let f_hab_labeled = LabeledPolynomial::new("f_hab".to_string(), f_hab.clone(), None, None);
-        let t_hab_labeled = LabeledPolynomial::new("t_hab".to_string(), t_hab.clone(), None, None);
-        let s_f_labeled = LabeledPolynomial::new("s_f".to_string(), s_f.clone(), None, None);
-        let s_t_labeled = LabeledPolynomial::new("s_t".to_string(), s_t.clone(), None, None);
+        let f_hab_labeled = LabeledPolynomial::new("f_hab".to_string(), f_hab.clone(), None, Some(1));
+        let t_hab_labeled = LabeledPolynomial::new("t_hab".to_string(), t_hab.clone(), None, Some(1));
+        let s_f_labeled = LabeledPolynomial::new("s_f".to_string(), s_f.clone(), None, Some(2));
+        let s_t_labeled = LabeledPolynomial::new("s_t".to_string(), s_t.clone(), None, Some(2));
 
         let zeta = F::rand(&mut fs_rng);
         let (q_V, q_H) = compute_round_4_polys(
@@ -379,8 +379,8 @@ where
             pk.V.clone(),
             pk.H.clone(),
         );
-        let q_V_labeled = LabeledPolynomial::new("q_V".to_string(), q_V.clone(), None, None);
-        let q_H_labeled = LabeledPolynomial::new("q_H".to_string(), q_H.clone(), None, None);
+        let q_V_labeled = LabeledPolynomial::new("q_V".to_string(), q_V.clone(), None, Some(1));
+        let q_H_labeled = LabeledPolynomial::new("q_H".to_string(), q_H.clone(), None, Some(1));
 
         let labeled_polys = vec![
             f_labeled,
@@ -400,7 +400,7 @@ where
 
         let batch_chall = F::rand(&mut fs_rng);
 
-        let comms = PC::commit(&pk.pc_pk, &labeled_polys, None)?;
+        let comms = PC::commit(&pk.pc_pk, &labeled_polys, Some(zk_rng))?;
 
         let query_set = Self::get_query_set(z, omega_z, gamma_z);
         let mut evaluations = ark_poly_commit::Evaluations::new();

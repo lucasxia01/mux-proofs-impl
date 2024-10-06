@@ -129,7 +129,7 @@ fn benchmark<F: Field, VLkup: VectorLookup<F>>(
                 // TODO: Inefficient since lookup comm and table comm can be reused over the for loop
                 start = Instant::now();
                 let (lookup_comm, lookup_repr) =
-                    VLkup::commit_lookup(&pk, lookup_vals.clone()).unwrap();
+                    VLkup::commit_lookup(&pk, lookup_vals.clone(), rng).unwrap();
                 end = start.elapsed().as_millis();
                 csv_writer
                     .write_record(&[
@@ -144,7 +144,7 @@ fn benchmark<F: Field, VLkup: VectorLookup<F>>(
                 csv_writer.flush().unwrap();
 
                 let (table_comm, table_repr) =
-                    VLkup::commit_table(&pk, table_vals.clone()).unwrap();
+                    VLkup::commit_table(&pk, table_vals.clone(), rng).unwrap();
 
                 // Prove
                 start = Instant::now();
@@ -155,7 +155,8 @@ fn benchmark<F: Field, VLkup: VectorLookup<F>>(
                     lookup_vals.clone(),
                     table_vals.clone(),
                     lookup_repr.clone(),
-                    table_repr.clone(),
+                    table_repr.clone(), 
+                    rng
                 )
                 .unwrap();
 
