@@ -57,8 +57,8 @@ pub trait VectorLookup<F: Field> {
     /// Perform vector lookup and produce proof
     fn prove<R: RngCore>(
         pk: &Self::ProverKey,
-        f_comm: &(Self::VectorCommitment, Self::VectorCommitmentRandomness),
-        t_comm: &(Self::VectorCommitment, Self::VectorCommitmentRandomness),
+        f_comm_pair: &(Self::VectorCommitment, Self::VectorCommitmentRandomness),
+        t_comm_pair: &(Self::VectorCommitment, Self::VectorCommitmentRandomness),
         f_vals: Vec<F>,
         t_vals: Vec<F>,
         f: Self::VectorRepr,

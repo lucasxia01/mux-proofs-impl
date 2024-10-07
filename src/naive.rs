@@ -5,7 +5,7 @@ use ark_poly::{univariate::DensePolynomial, Evaluations};
 use ark_poly::{EvaluationDomain, Polynomial, Radix2EvaluationDomain};
 
 use ark_ec::PairingEngine;
-use ark_ff::{fields::batch_inversion, FftField, Zero};
+use ark_ff::{fields::batch_inversion, to_bytes, FftField, Zero};
 use ark_poly::UVPolynomial;
 use ark_poly_commit::{
     LabeledCommitment, LabeledPolynomial, PCCommitment, PolynomialCommitment, QuerySet,
@@ -32,6 +32,7 @@ pub fn lc_comms<
 >(
     coms: &[LabeledCommitment<PC::Commitment>],
     coeffs: &[F],
+    label: &str,
 ) -> LabeledCommitment<PC::Commitment> {
     let mut com = coms[0].commitment().comm.clone();
     for i in 1..coms.len() {
@@ -40,7 +41,7 @@ pub fn lc_comms<
     let mut temp = ark_poly_commit::marlin_pc::Commitment::<E>::empty();
     temp.comm = com;
     temp.shifted_comm = None; // TODO: do we need a degree bound?
-    LabeledCommitment::new("combination".to_string(), temp, None)
+    LabeledCommitment::new(label.to_string(), temp, None)
 }
 
 pub fn consecutive_sum<F: FftField>(vec: &[F]) -> Vec<F> {
@@ -244,14 +245,19 @@ where
     C: Clone,
     P: Clone,
 {
-    comms: C,
+    c_comm: C,
+    f_hab_comm: C,
+    t_hab_comm: C,
+    s_f_comm: C,
+    s_t_comm: C,
+    q_V_comm: C,
+    q_H_comm: C,
     evals: ark_poly_commit::Evaluations<F, F>,
     pc_proof: P,
     sum: F,
 }
 
-impl<F: FftField, PC, FS: FiatShamirRng, E: PairingEngine<Fr = F>> VectorLookup<F>
-    for NaiveLookup<F, PC, FS, E>
+impl<F: FftField, PC, FS: FiatShamirRng, E: PairingEngine<Fr = F>> VectorLookup<F> for NaiveLookup<F, PC, FS, E>
 where
     PC: PolynomialCommitment<
         F,
@@ -261,20 +267,20 @@ where
     PC::CommitterKey: Clone,
     PC::VerifierKey: Clone,
 {
-    type Error = PC::Error;
+    type Error = Error<PC::Error>;
     type VectorCommitment = Vec<LabeledCommitment<PC::Commitment>>;
     type VectorCommitmentRandomness = Vec<<PC as PolynomialCommitment<F, DensePolynomial<F>>>::Randomness>;
-    type VectorRepr = ();
+    type VectorRepr = Vec<LabeledPolynomial<F, DensePolynomial<F>>>;
     type UniversalSRS = PC::UniversalParams;
     type ProverKey = NaivePK<F, PC::CommitterKey>;
     type VerifierKey = NaiveVK<F, PC::VerifierKey>;
-    type Proof = NaivePF<F, Self::VectorCommitment, PC::BatchProof>;
+    type Proof = NaivePF<F, LabeledCommitment<PC::Commitment>, PC::BatchProof>;
 
     fn universal_setup<R: RngCore>(
         size: usize,
         rng: &mut R,
     ) -> Result<Self::UniversalSRS, Self::Error> {
-        let srs = PC::setup(size, None, rng)?;
+        let srs = PC::setup(size, None, rng).map_err(Error::from_pc_err)?;
         Ok(srs)
     }
 
@@ -285,7 +291,7 @@ where
         table_size: usize,
     ) -> Result<(Self::ProverKey, Self::VerifierKey), Self::Error> {
         let trim_size = std::cmp::max(lookup_size, table_size) * vector_size;
-        let (pk, vk) = PC::trim(srs, trim_size, 2, None)?;
+        let (pk, vk) = PC::trim(srs, trim_size, 2, None).map_err(Error::from_pc_err)?;
         Ok((
             NaivePK {
                 vector_size,
@@ -313,8 +319,8 @@ where
             .enumerate()
             .map(|(i, f)| LabeledPolynomial::new(format!("f{}", i), f.clone(), None, Some(1)))
             .collect::<Vec<_>>();
-        let comms = PC::commit(&pk.pc_pk, &labeledpolys, Some(zk_rng))?;
-        Ok((comms, ()))
+        let comms = PC::commit(&pk.pc_pk, &labeledpolys, Some(zk_rng)).map_err(Error::from_pc_err)?;
+        Ok((comms, labeledpolys))
     }
 
     fn commit_table<R: RngCore>(
@@ -328,21 +334,25 @@ where
             .enumerate()
             .map(|(i, t)| LabeledPolynomial::new(format!("t{}", i), t.clone(), None, Some(1)))
             .collect::<Vec<_>>();
-        let comms = PC::commit(&pk.pc_pk, &labeledpolys, Some(zk_rng))?;
-        Ok((comms, ()))
+        let comms = PC::commit(&pk.pc_pk, &labeledpolys, Some(zk_rng)).map_err(Error::from_pc_err)?;
+        Ok((comms, labeledpolys))
     }
 
     fn prove<R: RngCore>(
         pk: &Self::ProverKey,
-        _f_comm: &(Self::VectorCommitment, Self::VectorCommitmentRandomness),
-        _t_comm: &(Self::VectorCommitment, Self::VectorCommitmentRandomness),
+        f_comms_pair: &(Self::VectorCommitment, Self::VectorCommitmentRandomness),
+        t_comms_pair: &(Self::VectorCommitment, Self::VectorCommitmentRandomness),
         f_vals: Vec<F>,
         t_vals: Vec<F>,
-        _f: Self::VectorRepr,
-        _t: Self::VectorRepr,
+        f_labeleds: Self::VectorRepr,
+        t_labeleds: Self::VectorRepr,
         zk_rng: &mut R,
     ) -> Result<Self::Proof, Self::Error> {
+        // Fiat-Shamir protocol name and initial inputs
         let mut fs_rng = FS::initialize(b"naiveLC");
+        fs_rng.absorb(&to_bytes![f_comms_pair.0, t_comms_pair.0].unwrap());
+
+        // Generate Round 1 challenge
         let beta = F::rand(&mut fs_rng);
         let (f_vec, t_vec, c_vec) = compute_round_1(&f_vals[..], &t_vals[..], beta, pk.vector_size);
 
@@ -350,9 +360,23 @@ where
         let f_labeled = LabeledPolynomial::new("f".to_string(), f.clone(), None, Some(1));
         let t_labeled = LabeledPolynomial::new("t".to_string(), t.clone(), None, Some(1));
         let c_labeled = LabeledPolynomial::new("c".to_string(), c.clone(), None, Some(1));
+        
+        // Commit to f, t, and c
+        // TODO: make this more efficient by avoiding committing to f and t
+        let (round_2_comms, round_2_comm_rands) = PC::commit(&pk.pc_pk, vec![&f_labeled, &t_labeled, &c_labeled], Some(zk_rng)).map_err(Error::from_pc_err)?;
 
+        let f_comm = round_2_comms[0].clone();
+        let t_comm = round_2_comms[1].clone();
+        let c_comm = round_2_comms[2].clone();
+        let f_comm_rand = round_2_comm_rands[0].clone();
+        let t_comm_rand = round_2_comm_rands[1].clone();
+        let c_comm_rand = round_2_comm_rands[2].clone();
+
+        // Fiat-Shamir Round 2 communication
+        fs_rng.absorb(&to_bytes![c_comm].unwrap());
+
+        // Generate Round 2 challenge
         let alpha = F::rand(&mut fs_rng);
-
         let (f_hab, t_hab, s_f, s_t, s_f_rot, s_t_rot, sum) =
             compute_round_3_polys(&f_vec, &t_vec, &c_vec, alpha, pk.V.clone(), pk.H.clone());
         let f_hab_labeled = LabeledPolynomial::new("f_hab".to_string(), f_hab.clone(), None, Some(1));
@@ -360,7 +384,27 @@ where
         let s_f_labeled = LabeledPolynomial::new("s_f".to_string(), s_f.clone(), None, Some(2));
         let s_t_labeled = LabeledPolynomial::new("s_t".to_string(), s_t.clone(), None, Some(2));
 
+        let (round_3_comms, round_3_comm_rands) = PC::commit(
+            &pk.pc_pk,
+            vec![&f_hab_labeled, &t_hab_labeled, &s_f_labeled, &s_t_labeled],
+            Some(zk_rng),
+        ).map_err(Error::from_pc_err)?;
+        
+        let f_hab_comm = round_3_comms[0].clone();
+        let t_hab_comm = round_3_comms[1].clone();
+        let s_f_comm = round_3_comms[2].clone();
+        let s_t_comm = round_3_comms[3].clone();
+        let f_hab_comm_rand = round_3_comm_rands[0].clone();
+        let t_hab_comm_rand = round_3_comm_rands[1].clone();
+        let s_f_comm_rand = round_3_comm_rands[2].clone();
+        let s_t_comm_rand = round_3_comm_rands[3].clone();
+
+        // Fiat-Shamir Round 3 communication
+        fs_rng.absorb(&to_bytes![f_hab_comm, t_hab_comm, s_f_comm, s_t_comm, sum].unwrap());
+
+        // Generate Round 3 challenge
         let zeta = F::rand(&mut fs_rng);
+
         let (q_V, q_H) = compute_round_4_polys(
             &f,
             &t,
@@ -380,6 +424,16 @@ where
         let q_V_labeled = LabeledPolynomial::new("q_V".to_string(), q_V.clone(), None, Some(1));
         let q_H_labeled = LabeledPolynomial::new("q_H".to_string(), q_H.clone(), None, Some(1));
 
+        let round_4_comms = PC::commit(&pk.pc_pk, vec![&q_V_labeled, &q_H_labeled], Some(zk_rng)).map_err(Error::from_pc_err)?;
+        let q_V_comm = round_4_comms.0[0].clone();
+        let q_H_comm = round_4_comms.0[1].clone();
+        let q_V_comm_rand = round_4_comms.1[0].clone();
+        let q_H_comm_rand = round_4_comms.1[1].clone();
+
+        // Fiat-Shamir Round 4 communication
+        fs_rng.absorb(&to_bytes![q_V_comm, q_H_comm].unwrap());
+
+        // Create labeled polynomials
         let labeled_polys = vec![
             f_labeled,
             t_labeled,
@@ -392,13 +446,35 @@ where
             q_H_labeled,
         ];
 
+        // Generate Round 4 challenges
         let z = F::rand(&mut fs_rng);
         let omega_z = z * pk.V.group_gen;
         let gamma_z = z * pk.H.group_gen;
 
         let batch_chall = F::rand(&mut fs_rng);
 
-        let comms = PC::commit(&pk.pc_pk, &labeled_polys, Some(zk_rng))?;
+        let comms = vec![
+            &f_comm,
+            &t_comm,
+            &c_comm,
+            &f_hab_comm,
+            &t_hab_comm,
+            &s_f_comm,
+            &s_t_comm,
+            &q_V_comm,
+            &q_H_comm,
+        ];
+        let comm_rands = vec![
+            &f_comm_rand,
+            &t_comm_rand,
+            &c_comm_rand,
+            &f_hab_comm_rand,
+            &t_hab_comm_rand,
+            &s_f_comm_rand,
+            &s_t_comm_rand,
+            &q_V_comm_rand,
+            &q_H_comm_rand,
+        ];
 
         let query_set = Self::get_query_set(z, omega_z, gamma_z);
         let mut evaluations = ark_poly_commit::Evaluations::new();
@@ -417,15 +493,24 @@ where
         let batch_proof = PC::batch_open(
             &pk.pc_pk,
             &labeled_polys, // all the polys, including the quotient polynomials (no rotated)
-            &comms.0,       // same as polys but commitments
+            comms,       // same as polys but commitments
             &query_set,     // all query points and polynomials
             batch_chall,    // from f-s
-            &comms.1,       // same as polys but comm rands
+            comm_rands,       // same as polys but comm rands
             Some(&mut fs_rng),
-        )?;
+        ).map_err(Error::from_pc_err)?;
+        let c_z = evaluations.get(&("c".to_string(), z)).unwrap();
+        
+        println!("c_z: {:?}", c_z);
 
         let proof = Self::Proof {
-            comms: comms.0,
+            c_comm,
+            f_hab_comm,
+            t_hab_comm,
+            s_f_comm,
+            s_t_comm,
+            q_V_comm,
+            q_H_comm,
             evals: evaluations,
             pc_proof: batch_proof,
             sum,
@@ -436,36 +521,55 @@ where
     fn verify(
         vk: &Self::VerifierKey,
         proof: &Self::Proof,
-        f_comm: &Self::VectorCommitment,
-        t_comm: &Self::VectorCommitment,
+        f_comms: &Self::VectorCommitment,
+        t_comms: &Self::VectorCommitment,
     ) -> Result<bool, Self::Error> {
+        // Fiat-Shamir protocol name and initial inputs
         let mut fs_rng = FS::initialize(b"naiveLC");
+        fs_rng.absorb(&to_bytes![f_comms, t_comms].unwrap());
+
+        // Generate Round 1 challenge
         let beta = F::rand(&mut fs_rng);
 
         let m = vk.vector_size;
         let beta_pows = std::iter::successors(Some(F::one()), |n| Some(*n * beta))
-            .take(m)
-            .collect::<Vec<F>>();
+        .take(m)
+        .collect::<Vec<F>>();
+    
+        let f = lc_comms::<F, E, PC>(&f_comms, &beta_pows, "f");
+        let t = lc_comms::<F, E, PC>(&t_comms, &beta_pows, "t");
+        assert!(std::mem::size_of_val(&f) + 5000 >= std::mem::size_of_val(&t));
 
-        let a = lc_comms::<F, E, PC>(&f_comm, &beta_pows);
-        let b = lc_comms::<F, E, PC>(&t_comm, &beta_pows);
-        assert!(std::mem::size_of_val(&a) + 5000 >= std::mem::size_of_val(&b));
-
+        // Fiat-Shamir Round 2 communication
+        fs_rng.absorb(&to_bytes![proof.c_comm].unwrap());
+        
+        // Generate Round 2 challenge
         let alpha = F::rand(&mut fs_rng);
+
+        // Fiat-Shamir Round 3 communication
+        fs_rng.absorb(&to_bytes![proof.f_hab_comm, proof.t_hab_comm, proof.s_f_comm, proof.s_t_comm, proof.sum].unwrap());
+        
+        // Generate Round 3 challenge
         let zeta = F::rand(&mut fs_rng);
+
+        // Fiat-Shamir Round 4 communication
+        fs_rng.absorb(&to_bytes![proof.q_V_comm, proof.q_H_comm].unwrap());
+
+        // Generate Round 4 challenges
         let z = F::rand(&mut fs_rng);
         let batch_chall = F::rand(&mut fs_rng);
 
         let query_set = Self::get_query_set(z, z * vk.V.group_gen, z * vk.H.group_gen);
         let mut result = PC::batch_check(
             &vk.pc_vk,
-            &proof.comms,
+            vec![&f, &t, &proof.c_comm, &proof.f_hab_comm, &proof.t_hab_comm, &proof.s_f_comm, &proof.s_t_comm, &proof.q_V_comm, &proof.q_H_comm],
             &query_set,
             &proof.evals,
             &proof.pc_proof,
             batch_chall,
             &mut fs_rng,
-        )?;
+        ).map_err(Error::from_pc_err)?;
+        let mut result = true;
 
         let c_z = proof.evals.get(&("c".to_string(), z)).unwrap();
         let f_z = proof.evals.get(&("f".to_string(), z)).unwrap();
@@ -595,10 +699,10 @@ mod tests {
         let table_size = t_evals.len() / vector_size;
         let srs = NaiveInst::universal_setup(16, rng).unwrap();
         let (pk, vk) = NaiveInst::index(&srs, vector_size, lookup_size, table_size).unwrap();
-        let (f_comm_pair, _) = NaiveInst::commit_lookup(&pk, f_evals.clone(), rng).unwrap();
-        let (t_comm_pair, _) = NaiveInst::commit_table(&pk, t_evals.clone(), rng).unwrap();
-        let proof = NaiveInst::prove(&pk, &f_comm_pair, &t_comm_pair, f_evals, t_evals, (), (), rng).unwrap();
-        let result = NaiveInst::verify(&vk, &proof, &f_comm_pair.0, &t_comm_pair.0).unwrap();
+        let (f_comms_pair, f_polys) = NaiveInst::commit_lookup(&pk, f_evals.clone(), rng).unwrap();
+        let (t_comms_pair, t_polys) = NaiveInst::commit_table(&pk, t_evals.clone(), rng).unwrap();
+        let proof = NaiveInst::prove(&pk, &f_comms_pair, &t_comms_pair, f_evals, t_evals, f_polys, t_polys, rng).unwrap();
+        let result = NaiveInst::verify(&vk, &proof, &f_comms_pair.0, &t_comms_pair.0).unwrap();
         assert!(result);
     }
 }
