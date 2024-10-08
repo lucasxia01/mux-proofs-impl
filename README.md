@@ -1,6 +1,6 @@
-# MuxProofs Coset Lookup
+# MuxProofs Succinct Vector Lookup
 
-Rust implementation of the Coset Lookup protocol from MuxProofs.
+Rust implementation of the Succinct Vector Lookup protocol from MuxProofs, as well as a Naive Vector Lookup protocol for comparison.
 
 **AsiaCrypt 2024** Zijing Di, Lucas Xia, Wilson Nguyen, Nirvan Tyagi. MUXProofs: Succinct Arguments for Machine Computation from Tuple Lookups. 
 

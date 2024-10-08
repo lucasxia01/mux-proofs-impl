@@ -6,8 +6,8 @@ use std::fmt::Debug;
 pub mod error;
 pub mod rng;
 
-// Implementation of CosetLookup vector lookup
-pub mod coset_lookup;
+// Implementation of SuccinctLookup vector lookup
+pub mod succinct_lookup;
 
 // Implementation of naive linear combination vector lookup
 pub mod naive;

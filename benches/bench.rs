@@ -12,7 +12,7 @@ use ark_ff::{Field, UniformRand};
 use ark_std::rand::Rng;
 
 use mux_proofs_impl::{
-    coset_lookup::CosetLookup, naive::NaiveLookup, rng::SimpleHashFiatShamirRng, VectorLookup,
+    succinct_lookup::SuccinctLookup, naive::NaiveLookup, rng::SimpleHashFiatShamirRng, VectorLookup,
 };
 
 // Generates n random values such that they sum up to total
@@ -281,9 +281,9 @@ fn main() {
     use ark_poly_commit::marlin_pc::MarlinKZG10;
     type PC = MarlinKZG10<Bls12_381, DensePolynomial<Fr>>;
     type FS = SimpleHashFiatShamirRng<Blake2s, ChaChaRng>;
-    type CosetLookupInst = CosetLookup<Fr, PC, FS>;
-    benchmark::<Fr, CosetLookupInst>(
-        "coset_lookup".to_string(),
+    type SuccinctLookupInst = SuccinctLookup<Fr, PC, FS>;
+    benchmark::<Fr, SuccinctLookupInst>(
+        "succinct_lookup".to_string(),
         &vec_sizes,
         &lookup_sizes,
         &table_sizes,

@@ -175,7 +175,7 @@ pub struct VerifierKey<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<
     coset_domain: Radix2EvaluationDomain<F>,
 }
 
-pub struct CosetLookup<
+pub struct SuccinctLookup<
     F: FftField,
     PC: PolynomialCommitment<F, DensePolynomial<F>>,
     FS: FiatShamirRng,
@@ -189,7 +189,7 @@ pub const PROTOCOL_NAME: &'static [u8] = b"Vector_Lookup";
 pub const MAX_ZERO_TEST_LENGTH: usize = 7;
 
 impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShamirRng>
-    VectorLookup<F> for CosetLookup<F, PC, FS>
+    VectorLookup<F> for SuccinctLookup<F, PC, FS>
 {
     type Error = Error<PC::Error>;
     type VectorCommitment = LabeledCommitment<PC::Commitment>;

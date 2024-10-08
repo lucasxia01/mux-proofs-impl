@@ -14,7 +14,7 @@ mod tests {
     use rand_chacha::ChaChaRng;
 
     use crate::{
-        coset_lookup::{poly_from_evals, CosetLookup},
+        succinct_lookup::{poly_from_evals, SuccinctLookup},
         rng::{FiatShamirRng, SimpleHashFiatShamirRng},
         VectorLookup,
     };
@@ -24,7 +24,7 @@ mod tests {
         use ark_poly_commit::marlin_pc::MarlinKZG10;
         type PC = MarlinKZG10<Bls12_381, DensePolynomial<Fr>>;
         type FS = SimpleHashFiatShamirRng<Blake2s, ChaChaRng>;
-        type CosetLookupInst = CosetLookup<Fr, PC, FS>;
+        type SuccinctLookupInst = SuccinctLookup<Fr, PC, FS>;
         let rng = &mut ark_std::test_rng();
         let lookup_size = f_vals.len() / vector_size;
         let table_size = t_vals.len() / vector_size;
@@ -32,25 +32,25 @@ mod tests {
         assert!(t_vals.len() % vector_size == 0);
 
         // Universal setup
-        let universal_srs = CosetLookupInst::universal_setup(1024, rng).unwrap();
+        let universal_srs = SuccinctLookupInst::universal_setup(1024, rng).unwrap();
 
         // Index to generate the prover and verifier keys
         let (pk, vk) =
-            CosetLookupInst::index(&universal_srs, vector_size, lookup_size, table_size).unwrap();
+            SuccinctLookupInst::index(&universal_srs, vector_size, lookup_size, table_size).unwrap();
 
-        let (f_comm_pair, f) = CosetLookupInst::commit_lookup(&pk, f_vals.clone(), rng).unwrap();
-        let (t_comm_pair, t) = CosetLookupInst::commit_table(&pk, t_vals.clone(), rng).unwrap();
+        let (f_comm_pair, f) = SuccinctLookupInst::commit_lookup(&pk, f_vals.clone(), rng).unwrap();
+        let (t_comm_pair, t) = SuccinctLookupInst::commit_table(&pk, t_vals.clone(), rng).unwrap();
 
         // Prove
         let proof =
-            CosetLookupInst::prove(&pk, &f_comm_pair, &t_comm_pair, f_vals, t_vals, f, t, rng).unwrap();
+            SuccinctLookupInst::prove(&pk, &f_comm_pair, &t_comm_pair, f_vals, t_vals, f, t, rng).unwrap();
         println!("c comm size: {:?}", size_of_val(proof.c_comm.commitment()));
         println!("pc proof length: {:?}", proof.pc_proof.len());
         println!(
             "pc proof element size: {:?}",
             size_of_val(&proof.pc_proof[0].w)
         );
-        let result = CosetLookupInst::verify(&vk, &proof, &f_comm_pair.0, &t_comm_pair.0).unwrap();
+        let result = SuccinctLookupInst::verify(&vk, &proof, &f_comm_pair.0, &t_comm_pair.0).unwrap();
         return result;
     }
 
