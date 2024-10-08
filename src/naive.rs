@@ -567,7 +567,6 @@ where
             batch_chall,
             &mut fs_rng,
         ).map_err(Error::from_pc_err)?;
-        println!("result: {}", result);
 
         let c_z = proof.evals.get(&("c".to_string(), z)).unwrap();
         let f_z = proof.evals.get(&("f".to_string(), z)).unwrap();

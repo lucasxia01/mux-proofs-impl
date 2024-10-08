@@ -333,7 +333,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         let t_evals = convert_vals_to_evals_form(t_vals, t_domain_size, coset_domain_size);
 
         let mut end = start.elapsed().as_millis();
-        println!("Time elapsed for initial setup: {} ms", end);
+        // println!("Time elapsed for initial setup: {} ms", end);
 
         start = Instant::now();
         /******* Step 1: compute count polynomial c(X) that encodes the counts the frequency of each table vector in f *******/
@@ -358,10 +358,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             *f_vec_counts.entry(f_vec.clone()).or_insert(0) += 1;
         }
         end = start.elapsed().as_millis();
-        println!(
-            "Time elapsed for Step 1, setting up f_vec_counts polys: {} ms",
-            end
-        );
+        // println!("Time elapsed for Step 1, setting up f_vec_counts polys: {} ms", end);
 
         start = Instant::now();
         // Step 1.a: Define c(X) over t_domain
@@ -374,7 +371,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             }
         }
         end = start.elapsed().as_millis();
-        println!("Time elapsed for setting up c_evals: {} ms", end);
+        // println!("Time elapsed for setting up c_evals: {} ms", end);
 
         start = Instant::now();
         // Step 1.b: ZeroTest to should that c(\gammaX) = c(X)
@@ -399,21 +396,14 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         fs_rng.absorb(&to_bytes![c_comm].unwrap());
 
         end = start.elapsed().as_millis();
-        println!("Degree of c polynomial: {}", c.degree());
-        println!(
-            "Time elapsed for Step 1 of committing to c polys: {} ms",
-            end
-        );
+        // println!("Time elapsed for Step 1 of committing to c polys: {} ms", end);
 
         start = Instant::now();
         /******* Step 2: Compute challenges alpha and beta *******/
         let alpha = F::rand(&mut fs_rng);
         let beta = F::rand(&mut fs_rng);
         end = start.elapsed().as_millis();
-        println!(
-            "Time elapsed for Step 2 of generating alpha and beta: {} ms",
-            end
-        );
+        // println!("Time elapsed for Step 2 of generating alpha and beta: {} ms", end);
 
         start = Instant::now();
         /******* Step 3: Compute position-indexing powers-of-beta polynomial I_b(X) *******/
@@ -430,7 +420,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             }
         }
         end = start.elapsed().as_millis();
-        println!("Time elapsed for Step 3 computing idx_f_evals: {} ms", end);
+        // println!("Time elapsed for Step 3 computing idx_f_evals: {} ms", end);
 
         start = Instant::now();
         let idx_f = LabeledPolynomial::new(
@@ -486,10 +476,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         idx_t_evals.rotate_right(t_domain_num_cosets); // a total rotation of t_domain_num_cosets, which is gamma in the t_domain
 
         end = start.elapsed().as_millis();
-        println!(
-            "Time elapsed for Step 3 of FFTs for idx f polys: {} ms",
-            end
-        );
+        // println!("Time elapsed for Step 3 of FFTs for idx f polys: {} ms", end);
 
         start = Instant::now();
         // Commit to the f and t indexing polynomials and the quotient polynomials
@@ -503,15 +490,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         fs_rng.absorb(&to_bytes![idx_f_comm, idx_t_comm].unwrap());
 
         end = start.elapsed().as_millis();
-        println!(
-            "degree of idx_f {} and idx_t {}",
-            idx_f.degree(),
-            idx_t.degree()
-        );
-        println!(
-            "Time elapsed for Step 3 of committing to idx polys: {} ms",
-            end
-        );
+        // println!("Time elapsed for Step 3 of committing to idx polys: {} ms", end);
 
         start = Instant::now();
         /******* Step 4: Compute summation polynomial S_b(X). *******/
@@ -568,8 +547,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         fs_rng.absorb(&to_bytes![s_f_comm, s_t_comm].unwrap());
 
         end = start.elapsed().as_millis();
-        println!("Degree of s_f and s_t: {}, {}", s_f.degree(), s_t.degree());
-        println!("Time elapsed for Step 4 of s polys: {} ms", end);
+        // println!("Time elapsed for Step 4 of s polys: {} ms", end);
 
         start = Instant::now();
         /******* Step 5: Compute induction polynomial B_b(X), which contains partial sums *******/
@@ -642,8 +620,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         fs_rng.absorb(&to_bytes![b_f_comm, b_t_comm].unwrap());
 
         end = start.elapsed().as_millis();
-        println!("Degree of b_f and b_t: {}, {}", b_f.degree(), b_t.degree());
-        println!("Time elapsed for Step 5 of b polys: {} ms", end);
+        // println!("Time elapsed for Step 5 of b polys: {} ms", end);
 
         start = Instant::now();
         /******* Step 6: Compute inverse polynomial U_b(X) *******/
@@ -681,7 +658,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         fs_rng.absorb(&to_bytes![u_f_comm, u_t_comm].unwrap());
 
         end = start.elapsed().as_millis();
-        println!("Time elapsed for Step 6 of u polys: {} ms", end);
+        // println!("Time elapsed for Step 6 of u polys: {} ms", end);
 
         start = Instant::now();
         /******* Step 7: Prove summations of U_0 and c * U_1. *******/
@@ -729,7 +706,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         fs_rng.absorb(&to_bytes![T_f_comm, T_t_comm].unwrap());
 
         end = start.elapsed().as_millis();
-        println!("Time elapsed for Step 7 of T polys: {} ms", end);
+        // println!("Time elapsed for Step 7 of T polys: {} ms", end);
 
         // Step 8: Now for constructing quotient polynomials
         let batching_challenge = F::rand(&mut fs_rng);
@@ -756,10 +733,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         .unwrap();
 
         end = start.elapsed().as_millis();
-        println!(
-            "Time elapsed for Step 8 of constructing quotient_V: {} ms",
-            end
-        );
+        // println!("Time elapsed for Step 8 of constructing quotient_V: {} ms", end);
 
         start = Instant::now();
 
@@ -791,15 +765,14 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         let H_f_zero_test_4 =
             (T_f_rotated_omega.polynomial() + &u_f.sub(T_f.polynomial())).mul(H_f_last_zero);
         end = start.elapsed().as_millis();
-        println!(
-            "Time elapsed for of constructing H_f_zero_tests 0 through 4: {} ms",
-            end
-        );
+        // println!("Time elapsed for of constructing H_f_zero_tests 0 through 4: {} ms", end);
+
         start = Instant::now();
         let lagrange_last_H_f: DensePolynomial<F> =
             ith_lagrange_poly(f_domain_size - 1, &pk.f_domain).into();
         end = start.elapsed().as_millis();
-        println!("Time elapsed for ith_lagrange_poly: {} ms", end);
+        // println!("Time elapsed for ith_lagrange_poly: {} ms", end);
+
         start = Instant::now();
         let H_f_zero_test_5 = lagrange_last_H_f.mul(&T_f.sub(u_f.polynomial()));
         let lagrange_0_H_f: DensePolynomial<F> = ith_lagrange_poly(0, &pk.f_domain).into();
@@ -817,10 +790,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         .unwrap();
 
         end = start.elapsed().as_millis();
-        println!(
-            "Time elapsed for Step 8 of constructing quotient_H_f: {} ms",
-            end
-        );
+        // println!("Time elapsed for Step 8 of constructing quotient_H_f: {} ms", end);
         start = Instant::now();
 
         // Quotient poly over t domain, 7 zero tests associated with it
@@ -856,7 +826,6 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             ith_lagrange_poly(t_domain_size - 1, &pk.t_domain).into();
         let H_t_zero_test_6 = lagrange_last_H_t.mul(&T_t.sub(&c.mul(u_t.polynomial())));
 
-        // println!("Degree of H_t_zero_test_0: {}, H_t_zero_test_1: {}, H_t_zero_test_2: {}, H_t_zero_test_3: {}, H_t_zero_test_4: {}, H_t_zero_test_5: {}, H_t_zero_test_6: {}", H_t_zero_test_0.degree(), H_t_zero_test_1.degree(), H_t_zero_test_2.degree(), H_t_zero_test_3.degree(), H_t_zero_test_4.degree(), H_t_zero_test_5.degree(), H_t_zero_test_6.degree());
         let (quotient_H_t, rem_H_t) = (H_t_zero_test_0
             + H_t_zero_test_1.mul(batching_challenge_powers[1])
             + H_t_zero_test_2.mul(batching_challenge_powers[2])
@@ -868,10 +837,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         .unwrap();
 
         end = start.elapsed().as_millis();
-        println!(
-            "Time elapsed for Step 8 of constructing quotient_H_f: {} ms",
-            end
-        );
+        // println!("Time elapsed for Step 8 of constructing quotient_H_f: {} ms", end);
         start = Instant::now();
 
         // Assert that remainders are all 0
@@ -905,13 +871,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         fs_rng.absorb(&to_bytes![quotient_V_comm, quotient_H_f_comm, quotient_H_t_comm].unwrap());
 
         end = start.elapsed().as_millis();
-        println!(
-            "degree of quotient_V: {}, quotient_H_f: {}, quotient_H_t: {}",
-            quotient_V_labeled.degree(),
-            quotient_H_f_labeled.degree(),
-            quotient_H_t_labeled.degree()
-        );
-        println!("Time elapsed for committing quotient polys: {} ms", end);
+        // println!("Time elapsed for committing quotient polys: {} ms", end);
 
         start = Instant::now();
         let comms = vec![
@@ -1019,10 +979,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         let quotient_H_t_eval_at_pt = quotient_H_t_labeled.evaluate(&pt);
 
         end = start.elapsed().as_millis();
-        println!(
-            "Time elapsed for setting up PC proof and evaluating polys: {} ms",
-            end
-        );
+        // println!("Time elapsed for setting up PC proof and evaluating polys: {} ms", end);
 
         return Ok(Proof {
             c_comm,
