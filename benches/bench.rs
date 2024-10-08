@@ -98,11 +98,11 @@ fn benchmark<F: Field, VLkup: VectorLookup<F>>(
                     .cycle()
                     .map(|i| F::from(i as u64))
                     .take(vec_size * table_size)
-                    .collect(); // TODO: make this unique
+                    .collect();
                 let mut lookup_vals: Vec<F> = vec![];
                 for i in 0..*table_size {
-                    for j in 0..freqs[i] {
-                        // generate the vector from i*vec_size to (i+1)*vec_size
+                    for j in 0..freqs[i] { // freqs[i] is the number of times to repeat the vector
+                        // Generate the vector from i*vec_size to (i+1)*vec_size
                         for k in 0..*vec_size {
                             lookup_vals.push(F::from((i * *vec_size + k) as u64));
                         }

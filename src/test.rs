@@ -2,6 +2,7 @@
 #![allow(non_snake_case)]
 #![allow(unused_imports)]
 
+// Tests for the Succinct Vector Lookup protocol
 mod tests {
     use std::mem::size_of_val;
 
@@ -19,6 +20,7 @@ mod tests {
         VectorLookup,
     };
 
+    // Proves and verifies using the Succinct Vector Lookup protocol
     fn prove_and_verify(f_vals: Vec<Fr>, t_vals: Vec<Fr>, vector_size: usize) -> bool {
         // create a prover from prover.rs
         use ark_poly_commit::marlin_pc::MarlinKZG10;
