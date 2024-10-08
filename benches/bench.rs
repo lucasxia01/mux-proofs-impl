@@ -175,7 +175,7 @@ fn benchmark<F: Field, VLkup: VectorLookup<F>>(
 
                 // Verify
                 start = Instant::now();
-                VLkup::verify(&vk, &proof, &lookup_comm, &table_comm).unwrap();
+                VLkup::verify(&vk, &proof, &lookup_comm.0, &table_comm.0).unwrap();
                 end = start.elapsed().as_millis();
                 csv_writer
                     .write_record(&[
