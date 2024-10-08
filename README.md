@@ -4,18 +4,44 @@ Rust implementation of the Succinct Vector Lookup protocol from MuxProofs, as we
 
 **AsiaCrypt 2024** Zijing Di, Lucas Xia, Wilson Nguyen, Nirvan Tyagi. MUXProofs: Succinct Arguments for Machine Computation from Tuple Lookups. 
 
+## Installation/Build
+
+The packages and benchmarks are easy to compile from source. The following sequence of commands may be helpful especially if on a fresh machine.
+
+Install basic prerequisites and dependencies:
+```
+apt update && apt install -y curl
+apt install git m4 z3 cmake libboost-all-dev build-essential
+```
+Install rust using any method ([Rust offical installation site](https://www.rust-lang.org/tools/install)):
+```
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source "$HOME/.cargo/env"
+```
+
+Clone the repository:
+```bash
+git clone https://github.com/lucasxia01/mux-proofs-impl.git
+cd mux-proofs-impl/
+```
+
+Build using `cargo`:
+```bash
+cargo build
+```
+
 ## Tests and Benchmarks
 
 The `muxproofs` packages come with a suite of tests and benchmarks.
 
 ### Running Tests
 To run the tests:
-```
+```bash
 cargo test
 ```
 ### Running Benchmarks
 To run a benchmark:
-```
+```bash
 cargo bench --bench name_of_benchmark -- [--optional-arg arg1 arg2...]
 ```
 ## Reproducing Benchmarks
