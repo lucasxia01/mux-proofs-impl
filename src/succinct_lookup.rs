@@ -22,15 +22,12 @@ use crate::{rng::FiatShamirRng, VectorLookup};
 
 pub use crate::error::*;
 
-// we need pick parameters
-// field, group, FS, evlauation domain
-
-// Copied from sublonk
+// Returns true if x is a power of 2
 pub fn is_pow_2(x: usize) -> bool {
     (x & (x - 1)) == 0
 }
 
-// Copied from sublonk
+// Interpolates a DensePolynomial from evaluations over the domain of the appropriate size
 pub fn poly_from_evals<F: FftField>(evals: &Vec<F>) -> DensePolynomial<F> {
     let n = evals.len();
     assert!(is_pow_2(n));
@@ -40,6 +37,7 @@ pub fn poly_from_evals<F: FftField>(evals: &Vec<F>) -> DensePolynomial<F> {
     eval_form.interpolate()
 }
 
+// Calculates the ith lagrange polynomial
 pub fn ith_lagrange_poly<F: FftField>(
     i: usize,
     domain: &Radix2EvaluationDomain<F>,
@@ -53,6 +51,7 @@ pub fn ith_lagrange_poly<F: FftField>(
     return SparsePolynomial::from(numerator.div(&denom).mul(coeff_i));
 }
 
+// Evaluates the ith lagrange polynomial at evaluation_point
 pub fn ith_lagrange_poly_eval<F: FftField>(
     i: usize,
     domain: &Radix2EvaluationDomain<F>,
@@ -65,40 +64,9 @@ pub fn ith_lagrange_poly_eval<F: FftField>(
         / (evaluation_point - omega_to_i);
 }
 
-fn get_query_set<F: FftField>(pt: F, gamma_pt: F, omega_f_pt: F, omega_t_pt: F) -> QuerySet<F> {
-    let mut query_set = QuerySet::new();
-    query_set.insert(("c".to_string(), ("gamma_pt".to_string(), gamma_pt)));
-    query_set.insert(("c".to_string(), ("pt".to_string(), pt)));
-    query_set.insert(("idx_f".to_string(), ("pt".to_string(), pt)));
-    query_set.insert(("idx_t".to_string(), ("pt".to_string(), pt)));
-    query_set.insert(("idx_f".to_string(), ("gamma_pt".to_string(), gamma_pt)));
-    query_set.insert(("idx_t".to_string(), ("gamma_pt".to_string(), gamma_pt)));
-    query_set.insert(("idx_f".to_string(), ("omega_f_pt".to_string(), omega_f_pt)));
-    query_set.insert(("idx_t".to_string(), ("omega_t_pt".to_string(), omega_t_pt)));
-    query_set.insert(("s_f".to_string(), ("gamma_pt".to_string(), gamma_pt)));
-    query_set.insert(("s_t".to_string(), ("gamma_pt".to_string(), gamma_pt)));
-    query_set.insert(("s_f".to_string(), ("pt".to_string(), pt)));
-    query_set.insert(("s_t".to_string(), ("pt".to_string(), pt)));
-    query_set.insert(("b_f".to_string(), ("gamma_pt".to_string(), gamma_pt)));
-    query_set.insert(("b_t".to_string(), ("gamma_pt".to_string(), gamma_pt)));
-    query_set.insert(("b_f".to_string(), ("pt".to_string(), pt)));
-    query_set.insert(("b_t".to_string(), ("pt".to_string(), pt)));
-    query_set.insert(("f".to_string(), ("gamma_pt".to_string(), gamma_pt)));
-    query_set.insert(("t".to_string(), ("gamma_pt".to_string(), gamma_pt)));
-    query_set.insert(("u_f".to_string(), ("pt".to_string(), pt)));
-    query_set.insert(("u_t".to_string(), ("pt".to_string(), pt)));
-    query_set.insert(("T_f".to_string(), ("omega_f_pt".to_string(), omega_f_pt)));
-    query_set.insert(("T_t".to_string(), ("omega_t_pt".to_string(), omega_t_pt)));
-    query_set.insert(("u_f".to_string(), ("pt".to_string(), pt)));
-    query_set.insert(("u_t".to_string(), ("pt".to_string(), pt)));
-    query_set.insert(("T_f".to_string(), ("pt".to_string(), pt)));
-    query_set.insert(("T_t".to_string(), ("pt".to_string(), pt)));
-    query_set.insert(("quotient_V".to_string(), ("pt".to_string(), pt)));
-    query_set.insert(("quotient_H_f".to_string(), ("pt".to_string(), pt)));
-    query_set.insert(("quotient_H_t".to_string(), ("pt".to_string(), pt)));
-    return query_set;
-}
-
+// Converts a flattened vector where the subvectors are consecutive to the evaluations form
+// This means that each subvector is represented by a coset of the group.
+// For example, the first subvector [0, ..., coset_domain_size-1] will be at indices [0, num_cosets, 2*num_cosets, ...]
 pub fn convert_vals_to_evals_form<F: FftField>(
     vals: Vec<F>,
     group_domain_size: usize,
@@ -189,6 +157,45 @@ pub const PROTOCOL_NAME: &'static [u8] = b"Vector_Lookup";
 pub const MAX_ZERO_TEST_LENGTH: usize = 7;
 
 impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShamirRng>
+    SuccinctLookup<F, PC, FS>
+{
+    // Defines the query set of the Succinct Lookup
+    fn get_query_set(pt: F, gamma_pt: F, omega_f_pt: F, omega_t_pt: F) -> QuerySet<F> {
+        let mut query_set = QuerySet::new();
+        query_set.insert(("c".to_string(), ("gamma_pt".to_string(), gamma_pt)));
+        query_set.insert(("c".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("idx_f".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("idx_t".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("idx_f".to_string(), ("gamma_pt".to_string(), gamma_pt)));
+        query_set.insert(("idx_t".to_string(), ("gamma_pt".to_string(), gamma_pt)));
+        query_set.insert(("idx_f".to_string(), ("omega_f_pt".to_string(), omega_f_pt)));
+        query_set.insert(("idx_t".to_string(), ("omega_t_pt".to_string(), omega_t_pt)));
+        query_set.insert(("s_f".to_string(), ("gamma_pt".to_string(), gamma_pt)));
+        query_set.insert(("s_t".to_string(), ("gamma_pt".to_string(), gamma_pt)));
+        query_set.insert(("s_f".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("s_t".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("b_f".to_string(), ("gamma_pt".to_string(), gamma_pt)));
+        query_set.insert(("b_t".to_string(), ("gamma_pt".to_string(), gamma_pt)));
+        query_set.insert(("b_f".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("b_t".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("f".to_string(), ("gamma_pt".to_string(), gamma_pt)));
+        query_set.insert(("t".to_string(), ("gamma_pt".to_string(), gamma_pt)));
+        query_set.insert(("u_f".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("u_t".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("T_f".to_string(), ("omega_f_pt".to_string(), omega_f_pt)));
+        query_set.insert(("T_t".to_string(), ("omega_t_pt".to_string(), omega_t_pt)));
+        query_set.insert(("u_f".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("u_t".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("T_f".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("T_t".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("quotient_V".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("quotient_H_f".to_string(), ("pt".to_string(), pt)));
+        query_set.insert(("quotient_H_t".to_string(), ("pt".to_string(), pt)));
+        return query_set;
+    }
+}
+
+impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShamirRng>
     VectorLookup<F> for SuccinctLookup<F, PC, FS>
 {
     type Error = Error<PC::Error>;
@@ -237,10 +244,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         let (committer_key, verifier_key) =
             PC::trim(&srs, size, supported_hiding_bound, None)
                 .map_err(Error::from_pc_err)?;
-        // println!(
-        //     "lookup size: {}, table size: {}, vector size: {}",
-        //     lookup_size, table_size, vector_size
-        // );
+
         let f_domain = Radix2EvaluationDomain::new(lookup_size * vector_size).unwrap();
         let t_domain = Radix2EvaluationDomain::new(table_size * vector_size).unwrap();
         let coset_domain = Radix2EvaluationDomain::new(vector_size).unwrap();
@@ -296,7 +300,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
     }
 
     // Prove function
-    // Inputs: Prover key, (vector commitment, table commitment), (vector elements, table elements)
+    // Inputs: Prover key, (vector commitment, table commitment), (vector elements, table elements), (vector poly, table poly), RNG for ZK
     fn prove<R: RngCore>(
         pk: &Self::ProverKey,
         f_comm_pair: &(Self::VectorCommitment, Self::VectorCommitmentRandomness),
@@ -308,9 +312,8 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         zk_rng: &mut R
     ) -> Result<Self::Proof, Self::Error> {
         let mut start = Instant::now();
-        // TODO: fix this initialization to include all public inputs
+        // Fiat-Shamir protocol name and initial inputs
         let mut fs_rng = FS::initialize(&to_bytes![PROTOCOL_NAME].unwrap());
-
         fs_rng.absorb(&to_bytes![f_comm_pair.0, t_comm_pair.0].unwrap());
 
         let f_domain_size = f_vals.len();
@@ -320,11 +323,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         assert_eq!(t_domain_size % coset_domain_size, 0);
         let f_domain_num_cosets = f_domain_size / coset_domain_size;
         let t_domain_num_cosets = t_domain_size / coset_domain_size;
-        // println!("f_domain_size: {}", f_domain_size);
-        // println!("t_domain_size: {}", t_domain_size);
-        // println!("coset_domain_size: {}", coset_domain_size);
-        // println!("f_domain_num_cosets: {}", f_domain_num_cosets);
-        // println!("t_domain_num_cosets: {}", t_domain_num_cosets);
+
         let f_comm = f_comm_pair.0.clone();
         let f_comm_rand = f_comm_pair.1.clone();
         let t_comm = t_comm_pair.0.clone();
@@ -337,7 +336,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         println!("Time elapsed for initial setup: {} ms", end);
 
         start = Instant::now();
-        // Step 1: compute count polynomial c(X) that encodes the counts the frequency of each table vector in f
+        /******* Step 1: compute count polynomial c(X) that encodes the counts the frequency of each table vector in f *******/
         let f_vecs: Vec<Vec<F>> = (0..f_domain_num_cosets)
             .map(|coset_idx| {
                 (0..coset_domain_size)
@@ -345,7 +344,6 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
                     .collect()
             })
             .collect();
-        // println!("f_vecs: {:?}", f_vecs);
         let t_vecs: Vec<Vec<F>> = (0..t_domain_num_cosets)
             .map(|coset_idx| {
                 (0..coset_domain_size)
@@ -353,8 +351,8 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
                     .collect()
             })
             .collect();
-        // println!("t_vecs: {:?}", t_vecs);
-        // Count how many each vector appears in t_vecs.
+
+        // Count how many times each vector appears in t_vecs.
         let mut f_vec_counts: HashMap<Vec<F>, u32> = HashMap::new();
         for f_vec in &f_vecs {
             *f_vec_counts.entry(f_vec.clone()).or_insert(0) += 1;
@@ -364,19 +362,6 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             "Time elapsed for Step 1, setting up f_vec_counts polys: {} ms",
             end
         );
-
-        // // DEBUGGING START to check that each vector appears in t_vecs
-        // let mut t_vec_counts: HashMap<Vec<F>, u32> = HashMap::new();
-        // for t_vec in &t_vecs {
-        //     *t_vec_counts.entry(t_vec.clone()).or_insert(0) += 1;
-        // }
-        // // Loop through f_vec_counts and check that each vector appears in t_vec_counts.
-        // for (k, v) in &f_vec_counts {
-        //     if !t_vec_counts.contains_key(k) {
-        //         panic!("f contains vec that is not in {:?}", k);
-        //     }
-        // }
-        // // DEBUGGING END
 
         start = Instant::now();
         // Step 1.a: Define c(X) over t_domain
@@ -390,23 +375,21 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         }
         end = start.elapsed().as_millis();
         println!("Time elapsed for setting up c_evals: {} ms", end);
-        // println!("Count poly in eval form: {:?}", c_evals);
 
         start = Instant::now();
         // Step 1.b: ZeroTest to should that c(\gammaX) = c(X)
         // Commit to c(X) and the quotient polynomial c_quotient(X) = (c(X) - c(\gammaX))/t_vanishing(X)
         // Want to prove that c(X) - c(\gammaX) = 0
         let c = LabeledPolynomial::new("c".to_string(), poly_from_evals(&c_evals), None, Some(2));
-        // rotate c_evals by gamma, which is t_domain_num_cosets
-        c_evals.rotate_left(t_domain_num_cosets); // TODO: double check this, and investigate the complexity of rotate_left
-                                                  // println!("Rotated c_evals: {:?}", c_evals);
+        // Rotate c_evals by gamma, which is t_domain_num_cosets
+        c_evals.rotate_left(t_domain_num_cosets); 
         let c_rotated_gamma = LabeledPolynomial::new(
             "c_rotated_gamma".to_string(),
             poly_from_evals(&c_evals),
             None,
             None,
         );
-        c_evals.rotate_right(t_domain_num_cosets); // undo the rotation
+        c_evals.rotate_right(t_domain_num_cosets); // Undo the rotation
 
         let (c_comms, c_comm_rands) =
             PC::commit(&pk.committer_key, vec![&c], Some(zk_rng)).map_err(Error::from_pc_err)?; // TODO: see if we can remove clone here
@@ -423,7 +406,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         );
 
         start = Instant::now();
-        // Step 2: Compute challenges alpha and beta
+        /******* Step 2: Compute challenges alpha and beta *******/
         let alpha = F::rand(&mut fs_rng);
         let beta = F::rand(&mut fs_rng);
         end = start.elapsed().as_millis();
@@ -433,7 +416,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         );
 
         start = Instant::now();
-        // Step 3: Compute position-indexing powers-of-beta polynomial I_b(X)
+        /******* Step 3: Compute position-indexing powers-of-beta polynomial I_b(X) *******/
         // Precompute powers of beta up to coset_domain_size iteratively using the previous power of beta
         let mut beta_powers: Vec<F> = vec![F::one()];
         for i in 1..coset_domain_size {
@@ -531,7 +514,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         );
 
         start = Instant::now();
-        // Step 4: Compute summation polynomial S_b(X).
+        /******* Step 4: Compute summation polynomial S_b(X). *******/
         // Step 4.a: Compute S_b(X) for b = {f, t}.
         let mut s_f_evals = vec![F::zero(); f_domain_size];
         for i in 0..f_domain_num_cosets {
@@ -589,7 +572,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         println!("Time elapsed for Step 4 of s polys: {} ms", end);
 
         start = Instant::now();
-        // Step 5: Compute induction polynomial B_b(X), which contains partial sums
+        /******* Step 5: Compute induction polynomial B_b(X), which contains partial sums *******/
         // Step 5.a: Compute B_b(X) for b = {f, t}.
         let mut b_f_evals = vec![F::zero(); f_domain_size];
         for i in 0..f_domain_num_cosets {
@@ -663,7 +646,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         println!("Time elapsed for Step 5 of b polys: {} ms", end);
 
         start = Instant::now();
-        // Step 6: Compute inverse polynomial U_b(X)
+        /******* Step 6: Compute inverse polynomial U_b(X) *******/
         // Step 6.a: Compute U_b(X) for b = {f, t}.
         let mut u_f_denoms: Vec<F> = s_f_evals.iter().map(|&x| alpha - x).collect();
         assert!(u_f_denoms.len() == f_domain_size);
@@ -701,13 +684,12 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         println!("Time elapsed for Step 6 of u polys: {} ms", end);
 
         start = Instant::now();
-        // Step 7: Prove summations of U_0 and c * U_1
+        /******* Step 7: Prove summations of U_0 and c * U_1. *******/
         // Step 7.a: Compute inverse summation polynomials T_b(X) for b = {f, t}.
         let mut T_f_evals = vec![F::zero(); f_domain_size];
         T_f_evals[f_domain_size - 1] = u_f_evals[f_domain_size - 1];
         for i in (0..f_domain_size - 1).rev() {
             T_f_evals[i] = T_f_evals[i + 1] + u_f_evals[i];
-            // println!("T_f_evals[{}]: {}", i, T_f_evals[i]);
         }
 
         let T_f =
@@ -725,7 +707,6 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         T_t_evals[t_domain_size - 1] = c_evals[t_domain_size - 1] * u_t_evals[t_domain_size - 1];
         for i in (0..t_domain_size - 1).rev() {
             T_t_evals[i] = T_t_evals[i + 1] + c_evals[i] * u_t_evals[i];
-            // println!("T_t_evals[{}]: {}", i, T_t_evals[i]);
         }
         let T_t =
             LabeledPolynomial::new("T_t".to_string(), poly_from_evals(&T_t_evals), None, Some(2));
@@ -893,21 +874,10 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         );
         start = Instant::now();
 
-        // assert that remainders are all 0
-        // println!(
-        //     "rem_V = {:?}, rem_H_f = {:?}, rem_H_t = {:?}",
-        //     rem_V, rem_H_f, rem_H_t
-        // );
-        // assert!(rem_V.is_zero());
-        // assert!(rem_H_f.is_zero());
-        // assert!(rem_H_t.is_zero());
-
-        // println!(
-        //     "size of quotient_V: {}, quotient_H_f: {}, quotient_H_t: {}",
-        //     quotient_V.clone().degree(),
-        //     quotient_H_f.clone().degree(),
-        //     quotient_H_t.clone().degree()
-        // );
+        // Assert that remainders are all 0
+        assert!(rem_V.is_zero());
+        assert!(rem_H_f.is_zero());
+        assert!(rem_H_t.is_zero());
 
         let quotient_V_labeled =
             LabeledPolynomial::new("quotient_V".to_string(), quotient_V, None, Some(1));
@@ -1004,9 +974,11 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         let omega_f_pt = pt * pk.f_domain.group_gen;
         let omega_t_pt = pt * pk.t_domain.group_gen;
 
-        let query_set = get_query_set(pt, gamma_pt, omega_f_pt, omega_t_pt);
+        let query_set = Self::get_query_set(pt, gamma_pt, omega_f_pt, omega_t_pt);
 
         let opening_challenge = F::rand(&mut fs_rng);
+
+        // Construct the PC proof for all the evaluations
         let pc_proof = PC::batch_open(
             &pk.committer_key,
             polys,             // all the polys, including the quotient polynomials (no rotated)
@@ -1017,12 +989,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
             None,
         )
         .map_err(Error::from_pc_err)?;
-        // lets say the zero test is A(X) = B(gamma X) over G, C(X) = 0 over G
-        // have to send commitments to A, B, and Q_G(X) = LC/V_G(X)
-        // we need B(gamma X) to compute Q_G(X)
-        // send batch eval proof for A(z), B(gamma z), Q_G(z)
-        // also send evaluations of A(z), B(gamma z), Q_G(z)
-        // lastly, we have to actually send all 26 evaluations
+
         let c_eval_at_gamma_pt = c.evaluate(&gamma_pt);
         let c_eval_at_pt = c.evaluate(&pt);
         let idx_f_eval_at_pt = idx_f.evaluate(&pt);
@@ -1109,10 +1076,8 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         f_comm: &Self::VectorCommitment,
         t_comm: &Self::VectorCommitment,
     ) -> Result<bool, Self::Error> {
-        // Fiat-shamir setup
-        // TODO: fix this initialization to include all public inputs
+        // Fiat-Shamir protocol name and initial inputs
         let mut fs_rng = FS::initialize(&to_bytes![PROTOCOL_NAME].unwrap());
-
         fs_rng.absorb(&to_bytes![f_comm, t_comm].unwrap());
         fs_rng.absorb(&to_bytes![proof.c_comm].unwrap());
 
@@ -1137,12 +1102,10 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
 
         // Get the verifier query challenge
         let pt = F::rand(&mut fs_rng);
-        // println!("query pt: {:?}", pt);
         let gamma_pt = pt * vk.coset_domain.group_gen;
         let omega_f_pt = pt * vk.f_domain.group_gen;
         let omega_t_pt = pt * vk.t_domain.group_gen;
-        let query_set = get_query_set(pt, gamma_pt, omega_f_pt, omega_t_pt);
-        // Derive some lagranges and vanishing polynomials
+        let query_set = Self::get_query_set(pt, gamma_pt, omega_f_pt, omega_t_pt);
 
         // Do a bunch of zero checks
         // Batch verify everything with 2 pairings
@@ -1170,22 +1133,10 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         evaluations.insert(("c".to_string(), pt), proof.c_eval_at_pt);
         evaluations.insert(("idx_f".to_string(), pt), proof.idx_f_eval_at_pt);
         evaluations.insert(("idx_t".to_string(), pt), proof.idx_t_eval_at_pt);
-        evaluations.insert(
-            ("idx_f".to_string(), gamma_pt),
-            proof.idx_f_eval_at_gamma_pt,
-        );
-        evaluations.insert(
-            ("idx_t".to_string(), gamma_pt),
-            proof.idx_t_eval_at_gamma_pt,
-        );
-        evaluations.insert(
-            ("idx_f".to_string(), omega_f_pt),
-            proof.idx_f_eval_at_omega_f_pt,
-        );
-        evaluations.insert(
-            ("idx_t".to_string(), omega_t_pt),
-            proof.idx_t_eval_at_omega_t_pt,
-        );
+        evaluations.insert(("idx_f".to_string(), gamma_pt), proof.idx_f_eval_at_gamma_pt);
+        evaluations.insert(("idx_t".to_string(), gamma_pt), proof.idx_t_eval_at_gamma_pt);
+        evaluations.insert(("idx_f".to_string(), omega_f_pt), proof.idx_f_eval_at_omega_f_pt);
+        evaluations.insert(("idx_t".to_string(), omega_t_pt), proof.idx_t_eval_at_omega_t_pt);
         evaluations.insert(("s_f".to_string(), gamma_pt), proof.s_f_eval_at_gamma_pt);
         evaluations.insert(("s_t".to_string(), gamma_pt), proof.s_t_eval_at_gamma_pt);
         evaluations.insert(("s_f".to_string(), pt), proof.s_f_eval_at_pt);
@@ -1198,25 +1149,14 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         evaluations.insert(("t".to_string(), gamma_pt), proof.t_eval_at_gamma_pt);
         evaluations.insert(("u_f".to_string(), pt), proof.u_f_eval_at_pt);
         evaluations.insert(("u_t".to_string(), pt), proof.u_t_eval_at_pt);
-        evaluations.insert(
-            ("T_f".to_string(), omega_f_pt),
-            proof.T_f_eval_at_omega_f_pt,
-        );
-        evaluations.insert(
-            ("T_t".to_string(), omega_t_pt),
-            proof.T_t_eval_at_omega_t_pt,
-        );
+        evaluations.insert(("T_f".to_string(), omega_f_pt), proof.T_f_eval_at_omega_f_pt);
+        evaluations.insert(("T_t".to_string(), omega_t_pt), proof.T_t_eval_at_omega_t_pt);
         evaluations.insert(("T_f".to_string(), pt), proof.T_f_eval_at_pt);
         evaluations.insert(("T_t".to_string(), pt), proof.T_t_eval_at_pt);
         evaluations.insert(("quotient_V".to_string(), pt), proof.quotient_V_eval_at_pt);
-        evaluations.insert(
-            ("quotient_H_f".to_string(), pt),
-            proof.quotient_H_f_eval_at_pt,
-        );
-        evaluations.insert(
-            ("quotient_H_t".to_string(), pt),
-            proof.quotient_H_t_eval_at_pt,
-        );
+        evaluations.insert(("quotient_H_f".to_string(), pt), proof.quotient_H_f_eval_at_pt);
+        evaluations.insert(("quotient_H_t".to_string(), pt), proof.quotient_H_t_eval_at_pt);
+
 
         let opening_challenge = F::rand(&mut fs_rng);
 
@@ -1279,8 +1219,8 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         let H_f_zero_test_5 = lagrange_last_H_f * (proof.T_f_eval_at_pt - proof.u_f_eval_at_pt);
         let lagrange_0_H_f = ith_lagrange_poly_eval(0, &vk.f_domain, pt);
         let H_f_zero_test_6 = lagrange_0_H_f * (proof.T_f_eval_at_pt - proof.T_t_eval_at_pt);
-        // Now batch together all the zero tests
 
+        // Batch together all the zero tests for H_f
         let quotient_H_f_result = (H_f_zero_test_0
             + H_f_zero_test_1.mul(batching_challenge_powers[1])
             + H_f_zero_test_2.mul(batching_challenge_powers[2])
@@ -1318,7 +1258,7 @@ impl<F: FftField, PC: PolynomialCommitment<F, DensePolynomial<F>>, FS: FiatShami
         let H_t_zero_test_6 =
             lagrange_last_H_t * (proof.T_t_eval_at_pt - proof.c_eval_at_pt * proof.u_t_eval_at_pt);
 
-        // Now batch together all the zero tests
+        // Batch together all the zero tests for H_t
         let quotient_H_t_result = (H_t_zero_test_0
             + H_t_zero_test_1.mul(batching_challenge_powers[1])
             + H_t_zero_test_2.mul(batching_challenge_powers[2])
