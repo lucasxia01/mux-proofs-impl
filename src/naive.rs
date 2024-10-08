@@ -317,7 +317,7 @@ where
         let labeledpolys = fs_polys
             .iter()
             .enumerate()
-            .map(|(i, f)| LabeledPolynomial::new(format!("f{}", i), f.clone(), None, Some(1)))
+            .map(|(i, f)| LabeledPolynomial::new(format!("f{}", i), f.clone(), None, None))
             .collect::<Vec<_>>();
         let comms = PC::commit(&pk.pc_pk, &labeledpolys, Some(zk_rng)).map_err(Error::from_pc_err)?;
         Ok((comms, labeledpolys))
@@ -332,7 +332,7 @@ where
         let labeledpolys = ts_polys
             .iter()
             .enumerate()
-            .map(|(i, t)| LabeledPolynomial::new(format!("t{}", i), t.clone(), None, Some(1)))
+            .map(|(i, t)| LabeledPolynomial::new(format!("t{}", i), t.clone(), None, None))
             .collect::<Vec<_>>();
         let comms = PC::commit(&pk.pc_pk, &labeledpolys, Some(zk_rng)).map_err(Error::from_pc_err)?;
         Ok((comms, labeledpolys))
@@ -357,8 +357,8 @@ where
         let (f_vec, t_vec, c_vec) = compute_round_1(&f_vals[..], &t_vals[..], beta, pk.vector_size);
 
         let (f, t, c) = compute_round_2_polys(&f_vec, &t_vec, &c_vec, pk.V.clone(), pk.H.clone());
-        let f_labeled = LabeledPolynomial::new("f".to_string(), f.clone(), None, Some(1));
-        let t_labeled = LabeledPolynomial::new("t".to_string(), t.clone(), None, Some(1));
+        let f_labeled = LabeledPolynomial::new("f".to_string(), f.clone(), None, None);
+        let t_labeled = LabeledPolynomial::new("t".to_string(), t.clone(), None, None);
         let c_labeled = LabeledPolynomial::new("c".to_string(), c.clone(), None, Some(1));
         
         // Commit to f, t, and c
@@ -499,9 +499,6 @@ where
             comm_rands,       // same as polys but comm rands
             Some(&mut fs_rng),
         ).map_err(Error::from_pc_err)?;
-        let c_z = evaluations.get(&("c".to_string(), z)).unwrap();
-        
-        println!("c_z: {:?}", c_z);
 
         let proof = Self::Proof {
             c_comm,
@@ -569,7 +566,7 @@ where
             batch_chall,
             &mut fs_rng,
         ).map_err(Error::from_pc_err)?;
-        let mut result = true;
+        println!("result: {}", result);
 
         let c_z = proof.evals.get(&("c".to_string(), z)).unwrap();
         let f_z = proof.evals.get(&("f".to_string(), z)).unwrap();
@@ -600,7 +597,7 @@ where
         result &= *q_H_z
             == ((*t_hab_z * (alpha + t_z) - c_z) + zeta * (*s_t_z + t_hab_z - s_t_gamma_z - s_d))
                 / H_z;
-
+        
         Ok(result)
     }
 }
