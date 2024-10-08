@@ -21,6 +21,7 @@ pub use crate::error::*;
 use crate::VectorLookup;
 use std::marker::PhantomData;
 
+// Derives a linear combination of commitments using the coeffs
 pub fn lc_comms<
     F: FftField,
     E: PairingEngine<Fr = F>,
